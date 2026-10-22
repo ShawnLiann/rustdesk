@@ -1,0 +1,179 @@
+name: RustDesk macOS arm64 H.264 Build (M2 test)
+
+on:
+  workflow_dispatch:
+
+env:
+  MAC_RUST_VERSION: "1.81" # required for macos, https://github.com/yury/cidre requires 1.81
+  FLUTTER_VERSION: "3.24.5"
+  VCPKG_COMMIT_ID: "9e593bb18ea69cc5095e012465dcd675a822ed0d"
+  VERSION: "1.5.0-m2h264"
+
+jobs:
+  generate-bridge:
+    uses: haol666/rustdesk/.github/workflows/bridge.yml@m2-h264-test
+
+  build-for-macOS-arm64:
+    name: rustdesk-arm64-h264
+    runs-on: macos-15
+    needs: [generate-bridge]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build runtime
+        run: |
+          brew install llvm create-dmg sccache
+          if command -v pkg-config &>/dev/null; then
+              echo "pkg-config is already installed"
+          else
+              brew install pkg-config
+          fi
+
+      - name: Install NASM 2.16
+        run: |
+          # NASM 3.x (brew) is incompatible; aom needs 2.x
+          wget https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/macosx/nasm-2.16.03-macosx.zip
+          unzip nasm-2.16.03-macosx.zip
+          sudo cp nasm-2.16.03/nasm /usr/local/bin/nasm
+          sudo mkdir -p /opt/homebrew/bin && sudo cp nasm-2.16.03/nasm /opt/homebrew/bin/nasm
+          nasm --version
+
+      - name: Install flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - name: Patch flutter
+        run: |
+          cd $(dirname $(dirname $(which flutter)))
+          if [[ "3.24.5" == ${{env.FLUTTER_VERSION}} ]]; then
+            git apply ${{ github.workspace }}/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff || true
+          fi
+
+      - name: Workaround for flutter issue
+        shell: bash
+        run: |
+          cd "$(dirname "$(which flutter)")"
+          # https://github.com/flutter/flutter/issues/133533
+          sed -i -e 's/_setFramesEnabledState(false);/\/\/_setFramesEnabledState(false);/g' ../packages/flutter/lib/src/scheduler/binding.dart
+          grep -n '_setFramesEnabledState(false);' ../packages/flutter/lib/src/scheduler/binding.dart || echo "patch applied"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ env.MAC_RUST_VERSION }}
+          targets: aarch64-apple-darwin
+          components: "rustfmt"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: macos-arm64-h264
+
+      - name: Cache sccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.sccache
+          key: sccache-macos-arm64-${{ hashFiles('Cargo.lock') }}
+
+      - name: Restore bridge files
+        uses: actions/download-artifact@v4
+        with:
+          name: bridge-artifact
+          path: ./
+
+      - name: Cache vcpkg installed + binary archives
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/vcpkg/installed
+            ~/.cache/vcpkg/archives
+          key: vcpkg-macos-arm64-${{ env.VCPKG_COMMIT_ID }}-${{ hashFiles('res/vcpkg/**/vcpkg.json', 'res/vcpkg/**/portfile.cmake') }}
+          restore-keys: |
+            vcpkg-macos-arm64-${{ env.VCPKG_COMMIT_ID }}-
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+          doNotCache: false
+
+      - name: Install vcpkg dependencies
+        run: |
+          if ! $VCPKG_ROOT/vcpkg \
+            install \
+            --x-install-root="$VCPKG_ROOT/installed"; then
+            find "${VCPKG_ROOT}/" -name "*.log" | while read -r _1; do
+              echo "$_1:"
+              echo "======"
+              cat "$_1"
+              echo "======"
+              echo ""
+            done
+            exit 1
+          fi
+
+      - name: Show version information
+        shell: bash
+        run: |
+          clang --version || true
+          rustup -V
+          cargo -V
+          rustc -V
+          flutter --version
+
+      - name: Build rustdesk
+        env:
+          RUSTC_WRAPPER: sccache
+          SCCACHE_DIR: ${{ github.workspace }}/.sccache
+          SCCACHE_CACHE_SIZE: 2G
+        run: |
+          sccache --start-server
+          ./build.py --flutter --hwcodec --unix-file-copy-paste
+          sccache --show-stats
+
+      - name: Create unsigned dmg
+        run: |
+          CREATE_DMG="$(command -v create-dmg)"
+          CREATE_DMG="$(readlink -f "$CREATE_DMG")"
+          sed -i -e 's/MAXIMUM_UNMOUNTING_ATTEMPTS=3/MAXIMUM_UNMOUNTING_ATTEMPTS=7/' "$CREATE_DMG"
+          create-dmg --icon "RustDesk.app" 200 190 --hide-extension "RustDesk.app" --window-size 800 400 --app-drop-link 600 185 rustdesk-${{ env.VERSION }}-aarch64.dmg ./flutter/build/macos/Build/Products/Release/RustDesk.app || {
+            # create-dmg sometimes fails on CI, fallback to plain hdiutil
+            hdiutil create -volname "RustDesk" -srcfolder ./flutter/build/macos/Build/Products/Release/RustDesk.app -ov -format UDZO rustdesk-${{ env.VERSION }}-aarch64.dmg
+          }
+          ls -la *.dmg
+
+      - name: Upload unsigned macOS app
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustdesk-unsigned-macos-aarch64
+          path: rustdesk-*.dmg
+
+      - name: Create prerelease and upload
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
+        with:
+          tag_name: m2-h264-test
+          name: "M2 (Apple Silicon) H.264 test build"
+          prerelease: true
+          files: |
+            rustdesk-${{ env.VERSION }}-aarch64.dmg
+          body: |
+            Unofficial test build for Apple Silicon (M2) hosts, combining:
+
+            1. Upstream PR rustdesk/rustdesk#16499 head (ba6d3a5): bounded encoder warm-up —
+               empty output during warm-up is flow control with a 3s bounded window, restoring
+               the error-counter fallback after warm-up.
+            2. h264_videotoolbox re-enable (rustdesk-org/hwcodec#48 patch on the official
+               0.8.0 base rev febec27): macOS H.264 hardware encoder detection restored.
+            3. macOS capture fallback fixes (CGDisplayStream probe + CGWindowList fallback).
+
+            Unsigned DMG — for testing only, not for production.
+
+            Test notes: install on the M2 host, connect from a client, and check the host log lines
+            `supported_encoding:` / `usable:` / `new encoder:`. With an H.264-only-decode client the
+            expected encoder is HWRAM with `h264_videotoolbox`.
