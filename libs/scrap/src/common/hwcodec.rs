@@ -139,7 +139,7 @@ impl EncoderApi for HwRamEncoder {
             }
             Ok(vf)
         } else {
-            Err(anyhow!("no valid frame"))
+            Err(HwNoOutput.into())
         }
     }
 
@@ -241,7 +241,13 @@ impl HwRamEncoder {
                 data.append(v);
                 Ok(data)
             }
-            Err(code) => Err(anyhow!("RAM encode failed: {}", code)),
+            Err(code) => {
+                if code == HW_NO_OUTPUT_CODE {
+                    Err(HwNoOutput.into())
+                } else {
+                    Err(anyhow!("RAM encode failed: {}", code))
+                }
+            }
         }
     }
 
@@ -493,6 +499,22 @@ fn get_mime_type(codec: DataFormat) -> &'static str {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+/// The encoder accepted the frame but has no packet ready yet. This is flow
+/// control, not a codec failure: the caller decides how long it may last.
+#[derive(Debug)]
+pub struct HwNoOutput;
+
+impl std::fmt::Display for HwNoOutput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("hardware encoder has no packet yet")
+    }
+}
+
+impl std::error::Error for HwNoOutput {}
+
+/// Matches FFMPEG_RAM_NO_OUTPUT in hwcodec's ffmpeg_ram_encode.cpp.
+pub const HW_NO_OUTPUT_CODE: i32 = -2;
+
 pub struct HwCodecConfig {
     #[serde(default)]
     pub signature: u64,

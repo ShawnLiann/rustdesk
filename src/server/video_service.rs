@@ -731,6 +731,8 @@ fn run(vs: VideoService) -> ResultType<()> {
     let mut first_frame = true;
     // Set once the encoder emits its first packet; until then it may legitimately return nothing.
     let mut encoder_warmed_up = false;
+    // Bounded window for "hardware encoder has no packet yet" (flow control, not an error).
+    let mut no_output_since: Option<Instant> = None;
     let capture_width = c.width;
     let capture_height = c.height;
     let mut static_refresh = static_refresh::StaticRefresh::new(
@@ -878,6 +880,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                         &mut encode_fail_counter,
                         &mut first_frame,
                         &mut encoder_warmed_up,
+                        &mut no_output_since,
                         capture_width,
                         capture_height,
                     )?;
@@ -944,6 +947,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                             &mut encode_fail_counter,
                             &mut first_frame,
                             &mut encoder_warmed_up,
+                            &mut no_output_since,
                             capture_width,
                             capture_height,
                         )?
@@ -1267,6 +1271,9 @@ fn check_privacy_mode_changed(
     Ok(())
 }
 
+/// How long a hardware encoder may produce no packet before it is treated as unhealthy.
+const HW_NO_OUTPUT_TIMEOUT_MS: u128 = 3000;
+
 #[inline]
 fn refresh_allowed(unfed: bool, warmed_up: bool, latency_free: bool) -> bool {
     // Only VideoToolbox has been seen to need this; other platforms keep refreshing as before.
@@ -1284,6 +1291,7 @@ fn handle_one_frame(
     encode_fail_counter: &mut usize,
     first_frame: &mut bool,
     encoder_warmed_up: &mut bool,
+    no_output_since: &mut Option<Instant>,
     width: usize,
     height: usize,
 ) -> ResultType<static_refresh::FrameEncodeResult> {
@@ -1304,6 +1312,7 @@ fn handle_one_frame(
         Ok(mut vf) => {
             *encode_fail_counter = 0;
             *encoder_warmed_up = true;
+            *no_output_since = None;
             vf.display = display as _;
             let mut msg = Message::new();
             msg.set_video_frame(vf);
@@ -1316,6 +1325,38 @@ fn handle_one_frame(
         }
         Err(e) => {
             vpx_no_output = e.is::<scrap::VpxNoOutput>();
+            // A hardware encoder with no packet ready is doing flow control, not failing.
+            // Bound it in time: the 3-frame counter is ~100 ms at 30 FPS, shorter than any
+            // encoder burst, so it fires on legitimate buffering and disables the encoder.
+            #[cfg(feature = "hwcodec")]
+            let hw_no_output = e.is::<scrap::hwcodec::HwNoOutput>();
+            #[cfg(not(feature = "hwcodec"))]
+            let hw_no_output = false;
+            if encoder.is_hardware() && hw_no_output {
+                let start = no_output_since.get_or_insert_with(Instant::now);
+                let waited = start.elapsed().as_millis();
+                if waited >= HW_NO_OUTPUT_TIMEOUT_MS {
+                    *no_output_since = None;
+                    *encode_fail_counter = 0;
+                    encoder.disable();
+                    log::error!(
+                        "switch due to no hardware output for {waited} ms (limit {HW_NO_OUTPUT_TIMEOUT_MS} ms)"
+                    );
+                    bail!("SWITCH");
+                }
+                static NO_OUTPUT_LOGGED: std::sync::atomic::AtomicUsize =
+                    std::sync::atomic::AtomicUsize::new(0);
+                let n = NO_OUTPUT_LOGGED.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                if n <= 20 || n % 100 == 0 {
+                    log::info!(
+                        "hardware encoder has no packet yet, waited {waited} ms (not counted as failure), total: {n}"
+                    );
+                }
+                return Ok(static_refresh::FrameEncodeResult {
+                    send_conn_ids,
+                    vpx_no_output,
+                });
+            }
             *encode_fail_counter += 1;
             // Encoding errors are not frequent except on Android
             if !cfg!(target_os = "android") {
