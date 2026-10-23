@@ -170,6 +170,8 @@ impl Encoder {
 
     pub fn update(update: EncodingUpdate) {
         log::info!("update:{:?}", update);
+        #[cfg(feature = "hwcodec")]
+        let removed_connection = matches!(update, EncodingUpdate::Remove(_));
         let mut decodings = PEER_DECODINGS.lock().unwrap();
         match update {
             EncodingUpdate::Update(id, decoding) => {
@@ -188,6 +190,15 @@ impl Encoder {
                 );
             }
             EncodingUpdate::Check => {}
+        }
+
+        // A runtime failure disables an encoder for the rest of the process
+        // (HwCodecConfig::clear). Give it another chance once the last session is
+        // gone, so the next connection re-tries it instead of staying on the
+        // fallback codec until the app is restarted.
+        #[cfg(feature = "hwcodec")]
+        if removed_connection && decodings.is_empty() {
+            crate::hwcodec::HwCodecConfig::restore();
         }
 
         let vp8_useable = decodings.len() > 0 && decodings.iter().all(|(_, s)| s.ability_vp8 > 0);

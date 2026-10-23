@@ -40,6 +40,8 @@ crate::generate_call_macro!(call_yuv, false);
 lazy_static::lazy_static! {
     static ref CONFIG: std::sync::Arc<std::sync::Mutex<Option<HwCodecConfig>>> = Default::default();
     static ref CONFIG_SET_BY_IPC: std::sync::Arc<std::sync::Mutex<bool>> = Default::default();
+    // Probe result as loaded at start-up, before any encoder was disabled at runtime.
+    static ref ORIGINAL_CONFIG: std::sync::Arc<std::sync::Mutex<Option<HwCodecConfig>>> = Default::default();
 }
 
 #[derive(Debug, Clone)]
@@ -532,8 +534,31 @@ impl HwCodecConfig {
             },
             "_hwcodec",
         );
+        *ORIGINAL_CONFIG.lock().unwrap() = Some(config.clone());
         *CONFIG.lock().unwrap() = Some(config);
         *CONFIG_SET_BY_IPC.lock().unwrap() = true;
+    }
+
+    /// Put back the config as probed at start-up, so that an encoder disabled by a
+    /// runtime failure (e.g. an encode error burst) gets another chance in the next
+    /// session instead of staying disabled until the whole process is restarted.
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub fn restore() {
+        let original = ORIGINAL_CONFIG.lock().unwrap().clone();
+        if let Some(original) = original {
+            let mut c = CONFIG.lock().unwrap();
+            let changed = c
+                .as_ref()
+                .map(|c| {
+                    c.ram_encode.len() != original.ram_encode.len()
+                        || c.ram_decode.len() != original.ram_decode.len()
+                })
+                .unwrap_or(true);
+            *c = Some(original);
+            if changed {
+                log::info!("restore hwcodec config for the next session");
+            }
+        }
     }
 
     pub fn get() -> HwCodecConfig {
