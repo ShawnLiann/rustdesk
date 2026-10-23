@@ -1272,7 +1272,21 @@ fn check_privacy_mode_changed(
 }
 
 /// How long a hardware encoder may produce no packet before it is treated as unhealthy.
+/// Not yet validated on hardware; see REPORT-eagain-investigation.md.
 const HW_NO_OUTPUT_TIMEOUT_MS: u128 = 3000;
+
+/// Bounded flow-control window. The clock starts on the first encode that produced no
+/// packet after a successful one, and only advances while frames keep being offered:
+/// a window is opened and checked per encode call, never by a background timer.
+fn hw_no_output_expired(window: &mut Option<Instant>, now: Instant, limit: Duration) -> bool {
+    match window {
+        Some(start) => now.duration_since(*start) >= limit,
+        None => {
+            *window = Some(now);
+            false
+        }
+    }
+}
 
 #[inline]
 fn refresh_allowed(unfed: bool, warmed_up: bool, latency_free: bool) -> bool {
@@ -1329,18 +1343,32 @@ fn handle_one_frame(
             // Bound it in time: the 3-frame counter is ~100 ms at 30 FPS, shorter than any
             // encoder burst, so it fires on legitimate buffering and disables the encoder.
             #[cfg(feature = "hwcodec")]
-            let hw_no_output = e.is::<scrap::hwcodec::HwNoOutput>();
+            let hw_flow_control = if e.is::<scrap::hwcodec::HwNoPacket>() {
+                Some("no packet")
+            } else if e.is::<scrap::hwcodec::HwInputRejected>() {
+                Some("input not accepted")
+            } else {
+                None
+            };
             #[cfg(not(feature = "hwcodec"))]
-            let hw_no_output = false;
-            if encoder.is_hardware() && hw_no_output {
-                let start = no_output_since.get_or_insert_with(Instant::now);
-                let waited = start.elapsed().as_millis();
-                if waited >= HW_NO_OUTPUT_TIMEOUT_MS {
+            let hw_flow_control: Option<&'static str> = None;
+            if let (true, Some(kind)) = (encoder.is_hardware(), hw_flow_control) {
+                let now = Instant::now();
+                let expired = hw_no_output_expired(
+                    no_output_since,
+                    now,
+                    Duration::from_millis(HW_NO_OUTPUT_TIMEOUT_MS as u64),
+                );
+                let waited = no_output_since
+                    .as_ref()
+                    .map(|start| now.duration_since(*start).as_millis())
+                    .unwrap_or(0);
+                if expired {
                     *no_output_since = None;
                     *encode_fail_counter = 0;
                     encoder.disable();
                     log::error!(
-                        "switch due to no hardware output for {waited} ms (limit {HW_NO_OUTPUT_TIMEOUT_MS} ms)"
+                        "switch due to no hardware output for {waited} ms ({kind}, limit {HW_NO_OUTPUT_TIMEOUT_MS} ms)"
                     );
                     bail!("SWITCH");
                 }
@@ -1349,7 +1377,7 @@ fn handle_one_frame(
                 let n = NO_OUTPUT_LOGGED.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
                 if n <= 20 || n % 100 == 0 {
                     log::info!(
-                        "hardware encoder has no packet yet, waited {waited} ms (not counted as failure), total: {n}"
+                        "hardware encoder flow control ({kind}), waited {waited} ms (not counted as failure), total: {n}"
                     );
                 }
                 return Ok(static_refresh::FrameEncodeResult {
@@ -1617,6 +1645,27 @@ fn handle_screenshot(screenshot: Screenshot, msg: String, w: usize, h: usize, da
 #[cfg(test)]
 mod tests {
     use super::refresh_allowed;
+
+    #[test]
+    fn hw_no_output_window_is_bounded_and_resets() {
+        use super::hw_no_output_expired;
+        let limit = std::time::Duration::from_secs(3);
+        let t0 = std::time::Instant::now();
+        let mut w: Option<std::time::Instant> = None;
+
+        // First empty output opens the window without expiring.
+        assert!(!hw_no_output_expired(&mut w, t0, limit));
+        assert!(w.is_some());
+        // Still inside the bound.
+        assert!(!hw_no_output_expired(&mut w, t0 + std::time::Duration::from_millis(2999), limit));
+        // Past the bound.
+        assert!(hw_no_output_expired(&mut w, t0 + limit, limit));
+
+        // A successful packet resets it: the next empty output starts a fresh window.
+        w = None;
+        assert!(!hw_no_output_expired(&mut w, t0, limit));
+        assert!(!hw_no_output_expired(&mut w, t0 + std::time::Duration::from_millis(1000), limit));
+    }
 
     #[test]
     fn refresh_waits_for_hw_encoder_warmup() {

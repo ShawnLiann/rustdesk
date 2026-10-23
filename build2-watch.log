@@ -1,0 +1,1546 @@
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch less than a minute ago
+
+JOBS
+* generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  * Install prerequisites
+  * Install Rust toolchain
+  * Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  * Cache Bridge
+  * Install flutter
+  * Install flutter rust bridge deps
+  * Run flutter rust bridge
+  * Upload Artifact
+  * Post Checkout source code
+* generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  * Install prerequisites
+  * Install Rust toolchain
+  * Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  * Cache Bridge
+  * Install flutter
+  * Install flutter rust bridge deps
+  * Run flutter rust bridge
+  * Upload Artifact
+  * Post Checkout source code
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 1 minute ago
+
+JOBS
+* generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  * Install flutter rust bridge deps
+  * Run flutter rust bridge
+  * Upload Artifact
+  * Post Install flutter
+  * Post Cache Bridge
+  * Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  * Post Checkout source code
+* generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  * Install prerequisites
+  * Install Rust toolchain
+  * Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  * Cache Bridge
+  * Install flutter
+  * Install flutter rust bridge deps
+  * Run flutter rust bridge
+  * Upload Artifact
+  * Post Checkout source code
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 2 minutes ago
+
+JOBS
+* generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  * Install flutter rust bridge deps
+  * Run flutter rust bridge
+  * Upload Artifact
+  * Post Install flutter
+  * Post Cache Bridge
+  * Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  * Post Checkout source code
+* generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  * Install prerequisites
+  * Install Rust toolchain
+  * Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  * Cache Bridge
+  * Install flutter
+  * Install flutter rust bridge deps
+  * Run flutter rust bridge
+  * Upload Artifact
+  * Post Checkout source code
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 3 minutes ago
+
+JOBS
+* generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  * Install flutter rust bridge deps
+  * Run flutter rust bridge
+  * Upload Artifact
+  * Post Install flutter
+  * Post Cache Bridge
+  * Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  * Post Checkout source code
+* generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  * Install prerequisites
+  * Install Rust toolchain
+  * Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  * Cache Bridge
+  * Install flutter
+  * Install flutter rust bridge deps
+  * Run flutter rust bridge
+  * Upload Artifact
+  * Post Checkout source code
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 4 minutes ago
+
+JOBS
+* generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  * Run flutter rust bridge
+  * Upload Artifact
+  * Post Install flutter
+  * Post Cache Bridge
+  * Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  * Post Checkout source code
+* generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  * Install prerequisites
+  * Install Rust toolchain
+  * Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  * Cache Bridge
+  * Install flutter
+  * Install flutter rust bridge deps
+  * Run flutter rust bridge
+  * Upload Artifact
+  * Post Checkout source code
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 5 minutes ago
+
+JOBS
+* generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  * Run flutter rust bridge
+  * Upload Artifact
+  * Post Install flutter
+  * Post Cache Bridge
+  * Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  * Post Checkout source code
+* generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  * Install prerequisites
+  * Install Rust toolchain
+  * Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  * Cache Bridge
+  * Install flutter
+  * Install flutter rust bridge deps
+  * Run flutter rust bridge
+  * Upload Artifact
+  * Post Checkout source code
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 6 minutes ago
+
+JOBS
+* generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  * Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  * Post Checkout source code
+* generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  * Install prerequisites
+  * Install Rust toolchain
+  * Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  * Cache Bridge
+  * Install flutter
+  * Install flutter rust bridge deps
+  * Run flutter rust bridge
+  * Upload Artifact
+  * Post Checkout source code
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 7 minutes ago
+
+JOBS
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) in 6m30s (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+* generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  * Install prerequisites
+  * Install Rust toolchain
+  * Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  * Cache Bridge
+  * Install flutter
+  * Install flutter rust bridge deps
+  * Run flutter rust bridge
+  * Upload Artifact
+  * Post Checkout source code
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact): .github#2
+
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 8 minutes ago
+
+JOBS
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) in 6m30s (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+* generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  * Install prerequisites
+  * Install Rust toolchain
+  * Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  * Cache Bridge
+  * Install flutter
+  * Install flutter rust bridge deps
+  * Run flutter rust bridge
+  * Upload Artifact
+  * Post Checkout source code
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact): .github#2
+
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 9 minutes ago
+
+JOBS
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) in 6m30s (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+* generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  * Install prerequisites
+  * Install Rust toolchain
+  * Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  * Cache Bridge
+  * Install flutter
+  * Install flutter rust bridge deps
+  * Run flutter rust bridge
+  * Upload Artifact
+  * Post Checkout source code
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact): .github#2
+
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 10 minutes ago
+
+JOBS
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) in 6m30s (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+* generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  * Install prerequisites
+  * Install Rust toolchain
+  * Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  * Cache Bridge
+  * Install flutter
+  * Install flutter rust bridge deps
+  * Run flutter rust bridge
+  * Upload Artifact
+  * Post Checkout source code
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact): .github#2
+
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 11 minutes ago
+
+JOBS
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) in 6m30s (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+* generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  * Install prerequisites
+  * Install Rust toolchain
+  * Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  * Cache Bridge
+  * Install flutter
+  * Install flutter rust bridge deps
+  * Run flutter rust bridge
+  * Upload Artifact
+  * Post Checkout source code
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact): .github#2
+
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 12 minutes ago
+
+JOBS
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) in 6m30s (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+* generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  * Install flutter
+  * Install flutter rust bridge deps
+  * Run flutter rust bridge
+  * Upload Artifact
+  * Post Install flutter
+  * Post Cache Bridge
+  * Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  * Post Checkout source code
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact): .github#2
+
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 13 minutes ago
+
+JOBS
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) in 6m30s (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+* generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  * Install flutter rust bridge deps
+  * Run flutter rust bridge
+  * Upload Artifact
+  * Post Install flutter
+  * Post Cache Bridge
+  * Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  * Post Checkout source code
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact): .github#2
+
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 14 minutes ago
+
+JOBS
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) in 6m30s (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+* generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  * Run flutter rust bridge
+  * Upload Artifact
+  * Post Install flutter
+  * Post Cache Bridge
+  * Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  * Post Checkout source code
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact): .github#2
+
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 15 minutes ago
+
+JOBS
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) in 6m30s (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) in 15m37s (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+* macOS arm64 (h264 test) (ID 120503603820)
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44): .github#2
+
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 16 minutes ago
+
+JOBS
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) in 6m30s (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) in 15m37s (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+* macOS arm64 (h264 test) (ID 120503603820)
+  ✓ Set up job
+  ✓ Export GitHub Actions cache environment variables
+  ✓ Checkout source code
+  ✓ Install build runtime
+  ✓ Install NASM
+  * Install flutter
+  * Patch flutter
+  * Workaround for flutter issue
+  * Install Rust toolchain
+  * Run Swatinem/rust-cache@v2
+  * Restore bridge files
+  * Setup vcpkg with GitHub Actions binary cache
+  * Install vcpkg dependencies
+  * Sync Cargo.lock for patched hwcodec
+  * Build rustdesk
+  * Show warm-up instrumentation strings
+  * Create unsigned dmg
+  * Upload dmg
+  * Post Install flutter
+  * Post Checkout source code
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44): .github#2
+
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 17 minutes ago
+
+JOBS
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) in 6m30s (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) in 15m37s (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+* macOS arm64 (h264 test) (ID 120503603820)
+  ✓ Set up job
+  ✓ Export GitHub Actions cache environment variables
+  ✓ Checkout source code
+  ✓ Install build runtime
+  ✓ Install NASM
+  ✓ Install flutter
+  ✓ Patch flutter
+  ✓ Workaround for flutter issue
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Restore bridge files
+  ✓ Setup vcpkg with GitHub Actions binary cache
+  * Install vcpkg dependencies
+  * Sync Cargo.lock for patched hwcodec
+  * Build rustdesk
+  * Show warm-up instrumentation strings
+  * Create unsigned dmg
+  * Upload dmg
+  * Post Run Swatinem/rust-cache@v2
+  * Post Install flutter
+  * Post Checkout source code
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44): .github#2
+
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 18 minutes ago
+
+JOBS
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) in 6m30s (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) in 15m37s (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+* macOS arm64 (h264 test) (ID 120503603820)
+  ✓ Set up job
+  ✓ Export GitHub Actions cache environment variables
+  ✓ Checkout source code
+  ✓ Install build runtime
+  ✓ Install NASM
+  ✓ Install flutter
+  ✓ Patch flutter
+  ✓ Workaround for flutter issue
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Restore bridge files
+  ✓ Setup vcpkg with GitHub Actions binary cache
+  * Install vcpkg dependencies
+  * Sync Cargo.lock for patched hwcodec
+  * Build rustdesk
+  * Show warm-up instrumentation strings
+  * Create unsigned dmg
+  * Upload dmg
+  * Post Run Swatinem/rust-cache@v2
+  * Post Install flutter
+  * Post Checkout source code
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44): .github#2
+
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 19 minutes ago
+
+JOBS
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) in 6m30s (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) in 15m37s (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+* macOS arm64 (h264 test) (ID 120503603820)
+  ✓ Set up job
+  ✓ Export GitHub Actions cache environment variables
+  ✓ Checkout source code
+  ✓ Install build runtime
+  ✓ Install NASM
+  ✓ Install flutter
+  ✓ Patch flutter
+  ✓ Workaround for flutter issue
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Restore bridge files
+  ✓ Setup vcpkg with GitHub Actions binary cache
+  * Install vcpkg dependencies
+  * Sync Cargo.lock for patched hwcodec
+  * Build rustdesk
+  * Show warm-up instrumentation strings
+  * Create unsigned dmg
+  * Upload dmg
+  * Post Run Swatinem/rust-cache@v2
+  * Post Install flutter
+  * Post Checkout source code
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44): .github#2
+
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 20 minutes ago
+
+JOBS
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) in 6m30s (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) in 15m37s (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+* macOS arm64 (h264 test) (ID 120503603820)
+  ✓ Set up job
+  ✓ Export GitHub Actions cache environment variables
+  ✓ Checkout source code
+  ✓ Install build runtime
+  ✓ Install NASM
+  ✓ Install flutter
+  ✓ Patch flutter
+  ✓ Workaround for flutter issue
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Restore bridge files
+  ✓ Setup vcpkg with GitHub Actions binary cache
+  * Install vcpkg dependencies
+  * Sync Cargo.lock for patched hwcodec
+  * Build rustdesk
+  * Show warm-up instrumentation strings
+  * Create unsigned dmg
+  * Upload dmg
+  * Post Run Swatinem/rust-cache@v2
+  * Post Install flutter
+  * Post Checkout source code
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44): .github#2
+
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 21 minutes ago
+
+JOBS
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) in 6m30s (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) in 15m37s (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+* macOS arm64 (h264 test) (ID 120503603820)
+  ✓ Set up job
+  ✓ Export GitHub Actions cache environment variables
+  ✓ Checkout source code
+  ✓ Install build runtime
+  ✓ Install NASM
+  ✓ Install flutter
+  ✓ Patch flutter
+  ✓ Workaround for flutter issue
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Restore bridge files
+  ✓ Setup vcpkg with GitHub Actions binary cache
+  * Install vcpkg dependencies
+  * Sync Cargo.lock for patched hwcodec
+  * Build rustdesk
+  * Show warm-up instrumentation strings
+  * Create unsigned dmg
+  * Upload dmg
+  * Post Run Swatinem/rust-cache@v2
+  * Post Install flutter
+  * Post Checkout source code
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44): .github#2
+
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 23 minutes ago
+
+JOBS
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) in 6m30s (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) in 15m37s (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+* macOS arm64 (h264 test) (ID 120503603820)
+  ✓ Set up job
+  ✓ Export GitHub Actions cache environment variables
+  ✓ Checkout source code
+  ✓ Install build runtime
+  ✓ Install NASM
+  ✓ Install flutter
+  ✓ Patch flutter
+  ✓ Workaround for flutter issue
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Restore bridge files
+  ✓ Setup vcpkg with GitHub Actions binary cache
+  ✓ Install vcpkg dependencies
+  * Sync Cargo.lock for patched hwcodec
+  * Build rustdesk
+  * Show warm-up instrumentation strings
+  * Create unsigned dmg
+  * Upload dmg
+  * Post Run Swatinem/rust-cache@v2
+  * Post Install flutter
+  * Post Checkout source code
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44): .github#2
+
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 24 minutes ago
+
+JOBS
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) in 6m30s (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) in 15m37s (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+* macOS arm64 (h264 test) (ID 120503603820)
+  ✓ Set up job
+  ✓ Export GitHub Actions cache environment variables
+  ✓ Checkout source code
+  ✓ Install build runtime
+  ✓ Install NASM
+  ✓ Install flutter
+  ✓ Patch flutter
+  ✓ Workaround for flutter issue
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Restore bridge files
+  ✓ Setup vcpkg with GitHub Actions binary cache
+  ✓ Install vcpkg dependencies
+  ✓ Sync Cargo.lock for patched hwcodec
+  * Build rustdesk
+  * Show warm-up instrumentation strings
+  * Create unsigned dmg
+  * Upload dmg
+  * Post Run Swatinem/rust-cache@v2
+  * Post Install flutter
+  * Post Checkout source code
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44): .github#2
+
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 25 minutes ago
+
+JOBS
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) in 6m30s (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) in 15m37s (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+* macOS arm64 (h264 test) (ID 120503603820)
+  ✓ Set up job
+  ✓ Export GitHub Actions cache environment variables
+  ✓ Checkout source code
+  ✓ Install build runtime
+  ✓ Install NASM
+  ✓ Install flutter
+  ✓ Patch flutter
+  ✓ Workaround for flutter issue
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Restore bridge files
+  ✓ Setup vcpkg with GitHub Actions binary cache
+  ✓ Install vcpkg dependencies
+  ✓ Sync Cargo.lock for patched hwcodec
+  * Build rustdesk
+  * Show warm-up instrumentation strings
+  * Create unsigned dmg
+  * Upload dmg
+  * Post Run Swatinem/rust-cache@v2
+  * Post Install flutter
+  * Post Checkout source code
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44): .github#2
+
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 26 minutes ago
+
+JOBS
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) in 6m30s (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) in 15m37s (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+* macOS arm64 (h264 test) (ID 120503603820)
+  ✓ Set up job
+  ✓ Export GitHub Actions cache environment variables
+  ✓ Checkout source code
+  ✓ Install build runtime
+  ✓ Install NASM
+  ✓ Install flutter
+  ✓ Patch flutter
+  ✓ Workaround for flutter issue
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Restore bridge files
+  ✓ Setup vcpkg with GitHub Actions binary cache
+  ✓ Install vcpkg dependencies
+  ✓ Sync Cargo.lock for patched hwcodec
+  * Build rustdesk
+  * Show warm-up instrumentation strings
+  * Create unsigned dmg
+  * Upload dmg
+  * Post Run Swatinem/rust-cache@v2
+  * Post Install flutter
+  * Post Checkout source code
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44): .github#2
+
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 27 minutes ago
+
+JOBS
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) in 6m30s (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) in 15m37s (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+* macOS arm64 (h264 test) (ID 120503603820)
+  ✓ Set up job
+  ✓ Export GitHub Actions cache environment variables
+  ✓ Checkout source code
+  ✓ Install build runtime
+  ✓ Install NASM
+  ✓ Install flutter
+  ✓ Patch flutter
+  ✓ Workaround for flutter issue
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Restore bridge files
+  ✓ Setup vcpkg with GitHub Actions binary cache
+  ✓ Install vcpkg dependencies
+  ✓ Sync Cargo.lock for patched hwcodec
+  * Build rustdesk
+  * Show warm-up instrumentation strings
+  * Create unsigned dmg
+  * Upload dmg
+  * Post Run Swatinem/rust-cache@v2
+  * Post Install flutter
+  * Post Checkout source code
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44): .github#2
+
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 28 minutes ago
+
+JOBS
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) in 6m30s (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) in 15m37s (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+* macOS arm64 (h264 test) (ID 120503603820)
+  ✓ Set up job
+  ✓ Export GitHub Actions cache environment variables
+  ✓ Checkout source code
+  ✓ Install build runtime
+  ✓ Install NASM
+  ✓ Install flutter
+  ✓ Patch flutter
+  ✓ Workaround for flutter issue
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Restore bridge files
+  ✓ Setup vcpkg with GitHub Actions binary cache
+  ✓ Install vcpkg dependencies
+  ✓ Sync Cargo.lock for patched hwcodec
+  * Build rustdesk
+  * Show warm-up instrumentation strings
+  * Create unsigned dmg
+  * Upload dmg
+  * Post Run Swatinem/rust-cache@v2
+  * Post Install flutter
+  * Post Checkout source code
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44): .github#2
+
+Refreshing run status every 60 seconds. Press Ctrl+C to quit.
+
+* fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 29 minutes ago
+
+JOBS
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) in 6m30s (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) in 15m37s (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+* macOS arm64 (h264 test) (ID 120503603820)
+  ✓ Set up job
+  ✓ Export GitHub Actions cache environment variables
+  ✓ Checkout source code
+  ✓ Install build runtime
+  ✓ Install NASM
+  ✓ Install flutter
+  ✓ Patch flutter
+  ✓ Workaround for flutter issue
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Restore bridge files
+  ✓ Setup vcpkg with GitHub Actions binary cache
+  ✓ Install vcpkg dependencies
+  ✓ Sync Cargo.lock for patched hwcodec
+  * Build rustdesk
+  * Show warm-up instrumentation strings
+  * Create unsigned dmg
+  * Upload dmg
+  * Post Run Swatinem/rust-cache@v2
+  * Post Install flutter
+  * Post Checkout source code
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44): .github#2
+
+X fix/hw-empty-output Build macOS H.264 test · 39977496616
+Triggered via workflow_dispatch about 30 minutes ago
+
+JOBS
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact) in 6m30s (ID 120495830071)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+✓ generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44) in 15m37s (ID 120495830194)
+  ✓ Set up job
+  ✓ Checkout source code
+  ✓ Install prerequisites
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Cache Bridge
+  ✓ Install flutter
+  ✓ Install flutter rust bridge deps
+  ✓ Run flutter rust bridge
+  ✓ Upload Artifact
+  ✓ Post Install flutter
+  ✓ Post Cache Bridge
+  ✓ Post Run Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+  ✓ Post Checkout source code
+  ✓ Complete job
+X macOS arm64 (h264 test) in 13m25s (ID 120503603820)
+  ✓ Set up job
+  ✓ Export GitHub Actions cache environment variables
+  ✓ Checkout source code
+  ✓ Install build runtime
+  ✓ Install NASM
+  ✓ Install flutter
+  ✓ Patch flutter
+  ✓ Workaround for flutter issue
+  ✓ Install Rust toolchain
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Restore bridge files
+  ✓ Setup vcpkg with GitHub Actions binary cache
+  ✓ Install vcpkg dependencies
+  ✓ Sync Cargo.lock for patched hwcodec
+  X Build rustdesk
+  - Show warm-up instrumentation strings
+  - Create unsigned dmg
+  - Upload dmg
+  - Post Run Swatinem/rust-cache@v2
+  ✓ Post Install flutter
+  ✓ Post Checkout source code
+  ✓ Complete job
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.22.3, bridge-artifact): .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@6f8efc29b200d32929f49075959781ed54ec270c, actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+generate-bridge / generate_bridge (x86_64-unknown-linux-gnu, ubuntu-22.04, 3.44.8, bridge-artifact-flutter-3.44): .github#2
+
