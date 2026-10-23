@@ -1,0 +1,75 @@
+name: macOS Intel Scrap Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths:
+      - 'libs/scrap/**'
+
+env:
+  VCPKG_COMMIT_ID: "9e593bb18ea69cc5095e012465dcd675a822ed0d"
+  HBB_COMMON_COMMIT: "229b904508364c8997aad0fb5af57effac859f60"
+
+jobs:
+  build:
+    name: x86_64-apple-darwin (scrap)
+    runs-on: macos-14
+    steps:
+    - name: Checkout source code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+        submodules: false
+
+    - name: Initialize hbb_common
+      shell: bash
+      run: |
+        cd "$GITHUB_WORKSPACE"
+        if [ -f "libs/hbb_common/Cargo.toml" ]; then
+          echo "hbb_common already exists."
+        else
+          echo "Cloning hbb_common..."
+          rm -rf libs/hbb_common
+          git clone https://github.com/rustdesk/hbb_common.git libs/hbb_common
+          cd libs/hbb_common
+          git checkout $HBB_COMMON_COMMIT
+          cd "$GITHUB_WORKSPACE"
+        fi
+        echo "hbb_common ready."
+
+    - name: Setup vcpkg
+      shell: bash
+      run: |
+        mkdir -p "$GITHUB_WORKSPACE/vcpkg"
+        cd "$GITHUB_WORKSPACE/vcpkg"
+        git clone https://github.com/microsoft/vcpkg.git .
+        git checkout $VCPKG_COMMIT_ID
+        ./bootstrap-vcpkg.sh -disableMetrics
+        brew install nasm
+        cd "$GITHUB_WORKSPACE"
+        "$GITHUB_WORKSPACE/vcpkg/vcpkg" install libyuv libvpx aom --triplet x64-osx --overlay-ports ./res/vcpkg --classic
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
+      with:
+        toolchain: stable
+        targets: x86_64-apple-darwin
+
+    - name: Build scrap library
+      shell: bash
+      run: |
+        export VCPKG_ROOT="$GITHUB_WORKSPACE/vcpkg"
+        export VCPKG_INSTALLED_ROOT="$VCPKG_ROOT/installed"
+        cargo build -p scrap --target x86_64-apple-darwin
+        echo "=== Build artifacts ==="
+        ls -la target/x86_64-apple-darwin/debug/libscrap.*
+
+    - name: Upload build artifact
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: libscrap-x86_64-apple-darwin
+        path: |
+          target/x86_64-apple-darwin/debug/libscrap*

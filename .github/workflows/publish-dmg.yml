@@ -1,0 +1,70 @@
+name: Publish DMG to Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Actions run ID containing the DMG artifact'
+        required: false
+        default: '37418126358'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # 从指定的历史 run 下载 artifact（GitHub 内网，速度快）
+      - name: Download DMG artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rustdesk-unsigned-macos-x86_64
+          path: ./dist
+          run-id: ${{ github.event.inputs.run_id || '37418126358' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Show downloaded files
+        run: |
+          ls -la ./dist/
+          echo "---"
+          file ./dist/*.dmg || true
+
+      # 重命名 DMG（带 run-id），避免 CDN 缓存命中旧版本
+      - name: Rename DMG with run id
+        run: |
+          cd dist
+          RUN_ID="${{ github.event.inputs.run_id || '37418126358' }}"
+          shopt -s nullglob
+          dmgs=( *.dmg )
+          echo "found ${#dmgs[@]} dmg file(s)"
+          for f in "${dmgs[@]}"; do
+            mv -v "$f" "rustdesk-h264-v1.1-r${RUN_ID}.dmg"
+            break
+          done
+          ls -la
+
+      # 创建正式 release 并上传 DMG（公开可下载）
+      - name: Create release and upload DMG
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: h264-v1.1
+          name: "H264 硬编码初稿（ipc 检测链修复）"
+          prerelease: true
+          files: dist/*.dmg
+          body: |
+            RustDesk macOS x86_64 — H264 VideoToolbox 硬编码初稿 + ipc 检测链修复。
+
+            本次修复（相对 h264-v1）：
+            - mac.mm：VideoToolbox 探针看门狗（挂死降级为“不支持”，不再卡死检测子进程）
+            - mac.mm：进程级结果缓存（encoder/decoder 枚举与签名共享一次探测，消除对 VT 服务的重复轰击）
+            - mac.mm：瞬态 -12903 失败重试一次（冷启动自愈）
+            - hwcodec.rs：父进程等待 30s→60s（给冷启动老机器留余量）
+            - 根因：老 Intel 黑苹果上 VideoToolbox 会话创建不稳定（瞬时失败/9-10s 慢成功/无限挂死），
+              检测子进程曾死在第二次枚举调用中，ipc 结果永不到达 → 缓存永不生成 → 连接退 VP9
+
+            核心修复（h264-v1 继承）：
+            - CGWindowList fallback 位图常量修正（ffi.rs，0x1001 → 0x2002）
+            - CGDisplayStream 帧计数器统一，主路径误降级修复
+            - hwcodec 检测改为硬编语义（allow_sw=0），正确剔除不可用 HEVC
+            - VideoToolbox 硬编首帧 warm-up 容忍（3 → 30 次）
+            - CI 缓存优化（vcpkg installed + sccache），构建约 12 分钟

@@ -1,0 +1,72 @@
+# Publish completed build artifacts to a GitHub prerelease.
+#
+# Downloads both artifacts inside the Actions network (fast) and uploads them
+# to one prerelease on the fork. Mirrors the proven publish-dmg.yml pattern.
+#
+# Sources:
+#   - macOS x86_64 DMG    : run 39365728924 (v6 EAGAIN warm-up fix, commit ef5cfb7)
+#   - aarch64 unattended-wayland deb : run 39368933623 (master 6a92013, drm feature)
+
+name: Publish builds to Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # GitHub 内网下载 artifact，速度快
+      - name: Download macOS DMG artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rustdesk-unsigned-macos-x86_64
+          path: ./dist/macos
+          run-id: "39365728924"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download aarch64 deb artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rustdesk-unattended-wayland-1.5.0-aarch64.deb
+          path: ./dist/aarch64
+          run-id: "39368933623"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Show downloaded files
+        run: |
+          ls -laR ./dist/
+          file ./dist/macos/*.dmg ./dist/aarch64/*.deb
+
+      - name: "Rename assets (fork convention: rustdesk-<tag>-r<runid>.<ext>)"
+        run: |
+          mv ./dist/macos/*.dmg ./rustdesk-eagain-warmup-v6-r39365728924.dmg
+          mv ./dist/aarch64/*.deb ./rustdesk-unattended-wayland-1.5.0-aarch64-r39368933623.deb
+          ls -la
+
+      - name: Create prerelease and upload
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
+        with:
+          tag_name: eagain-warmup-v6
+          name: "EAGAIN 有界预热窗口修复 v6 + aarch64 unattended-wayland"
+          prerelease: true
+          files: |
+            rustdesk-eagain-warmup-v6-r39365728924.dmg
+            rustdesk-unattended-wayland-1.5.0-aarch64-r39368933623.deb
+          body: |
+            ## 构建产物（编译验证已完成）
+
+            ### 1. macOS x86_64 DMG — v6 EAGAIN 有界预热窗口修复
+            - 来源分支 `pr/eagain-warmup-v6`（commit ef5cfb7，含 E0382 修复）
+            - 对应上游 PR rustdesk/rustdesk#16499（hwcodec EAGAIN 语义修复 + 3 秒有界 warm-up 窗口）
+            - CI：run 39365728924，macos-15-intel，`build.py --flutter --hwcodec --unix-file-copy-paste`，MACOSX_DEPLOYMENT_TARGET=10.14
+            - **未签名** DMG，仅供 T5（Intel Mac mini）部署验证
+
+            ### 2. aarch64 unattended-wayland deb — 此芯 P1（RK3588）用
+            - `rustdesk-unattended-wayland` 1.5.0，aarch64（arm64），含 `drm` + `drm-wake` feature
+            - 官方只发布 x86_64 unattended-wayland 版；此为独立 workflow 在 `ubuntu-22.04-arm` 原生 ARM64 runner 上构建的 aarch64 版
+            - libdrmtap.so.0（aarch64 原生构建）已打入 deb，含 soname 符号链接；deb 已通过 dlopen 标记校验（确认为真 DRM 构建）
+            - 用法：RK3588 设备上 `sudo dpkg -i rustdesk-unattended-wayland-1.5.0-aarch64-r39368933623.deb`（注意与官方 rustdesk 包互斥，Conflicts/Replaces）
+            - 依赖：libdrm2 (>= 2.4.101)、libegl1、libgles2；DRM/KMS 直捕无需 Wayland portal 授权，可在登录界面工作
