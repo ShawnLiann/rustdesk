@@ -524,7 +524,7 @@ struct HwCodecConfig2 {
 impl HwCodecConfig {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     pub fn set(config: String) {
-        let config = serde_json::from_str(&config).unwrap_or_default();
+        let config: HwCodecConfig = serde_json::from_str(&config).unwrap_or_default();
         log::info!("set hwcodec config");
         log::debug!("{config:?}");
         #[cfg(any(windows, target_os = "macos"))]
