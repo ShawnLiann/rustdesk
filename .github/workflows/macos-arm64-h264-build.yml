@@ -11,7 +11,7 @@ env:
 
 jobs:
   generate-bridge:
-    uses: haol666/rustdesk/.github/workflows/bridge.yml@m2-h264-test
+    uses: ShawnLiann/rustdesk/.github/workflows/bridge.yml@review/haol-m2-test
 
   build-for-macOS-arm64:
     name: rustdesk-arm64-h264
@@ -157,7 +157,7 @@ jobs:
       - name: Create prerelease and upload
         uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
-          tag_name: m2-h264-test
+          tag_name: m2-h264-test-shawn
           name: "M2 (Apple Silicon) H.264 test build"
           prerelease: true
           files: |
