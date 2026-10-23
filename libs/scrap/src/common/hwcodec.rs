@@ -207,6 +207,11 @@ impl EncoderApi for HwRamEncoder {
         true
     }
 
+    fn force_keyframe(&mut self) -> bool {
+        self.encoder.force_keyframe();
+        true
+    }
+
     fn disable(&self) {
         HwCodecConfig::clear(false, true);
     }

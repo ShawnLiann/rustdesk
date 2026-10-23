@@ -766,8 +766,19 @@ fn run(vs: VideoService) -> ResultType<()> {
             if vs.source.is_monitor() {
                 let _ = try_broadcast_display_changed(&sp, display_idx, &c, true);
             }
-            log::info!("switch to refresh");
-            bail!("SWITCH");
+            // A refresh only needs a fresh IDR. Tearing the video service down
+            // to get one also destroys the encoder: the replacement starts from
+            // an empty pipeline, its first frames produce no packet, and the
+            // client is left without frames until it warms up again. Ask the
+            // running encoder for a keyframe instead, and rebuild only when the
+            // encoder cannot oblige.
+            if encoder.force_keyframe() {
+                sp.set_option_bool(OPTION_REFRESH, false);
+                log::info!("refresh: keyframe requested from the live encoder");
+            } else {
+                log::info!("switch to refresh");
+                bail!("SWITCH");
+            }
         }
         if codec_format != Encoder::negotiated_codec() {
             log::info!(

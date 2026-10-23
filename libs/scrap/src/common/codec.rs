@@ -77,6 +77,13 @@ pub trait EncoderApi {
 
     fn latency_free(&self) -> bool;
 
+    /// Ask the encoder to emit the next frame as a keyframe. Returns false when
+    /// the encoder cannot do this; the caller must then fall back to its
+    /// previous behaviour (rebuilding the pipeline) to obtain one.
+    fn force_keyframe(&mut self) -> bool {
+        false
+    }
+
     fn is_hardware(&self) -> bool;
 
     fn disable(&self);
