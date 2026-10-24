@@ -137,7 +137,7 @@ impl EncoderApi for HwRamEncoder {
             }
             Ok(vf)
         } else {
-            Err(anyhow!("no valid frame"))
+            Err(HwNoPacket.into())
         }
     }
 
@@ -239,7 +239,15 @@ impl HwRamEncoder {
                 data.append(v);
                 Ok(data)
             }
-            Err(code) => Err(anyhow!("RAM encode failed: {}", code)),
+            Err(code) => {
+                if code == hwcodec::common::FFMPEG_RAM_NO_PACKET as i32 {
+                    Err(HwNoPacket.into())
+                } else if code == hwcodec::common::FFMPEG_RAM_INPUT_REJECTED as i32 {
+                    Err(HwInputRejected.into())
+                } else {
+                    Err(anyhow!("RAM encode failed: {}", code))
+                }
+            }
         }
     }
 
@@ -490,6 +498,31 @@ fn get_mime_type(codec: DataFormat) -> &'static str {
     }
 }
 
+/// The encoder accepted the frame but has no packet ready yet. Flow control,
+/// not a codec failure: the caller decides how long it may last.
+#[derive(Debug)]
+pub struct HwNoPacket;
+
+impl std::fmt::Display for HwNoPacket {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("hardware encoder has no packet yet")
+    }
+}
+
+impl std::error::Error for HwNoPacket {}
+
+/// The encoder refused the frame; hwcodec keeps it and re-offers it later.
+#[derive(Debug)]
+pub struct HwInputRejected;
+
+impl std::fmt::Display for HwInputRejected {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("hardware encoder did not accept the frame")
+    }
+}
+
+impl std::error::Error for HwInputRejected {}
+
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct HwCodecConfig {
     #[serde(default)]
@@ -522,7 +555,7 @@ struct HwCodecConfig2 {
 impl HwCodecConfig {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     pub fn set(config: String) {
-        let config = serde_json::from_str(&config).unwrap_or_default();
+        let config: HwCodecConfig = serde_json::from_str(&config).unwrap_or_default();
         log::info!("set hwcodec config");
         log::debug!("{config:?}");
         #[cfg(any(windows, target_os = "macos"))]
