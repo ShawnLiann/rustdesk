@@ -242,9 +242,9 @@ impl HwRamEncoder {
                 Ok(data)
             }
             Err(code) => {
-                if code == hwcodec::common::FFMPEG_RAM_NO_PACKET as i32 {
+                if code == HwcodecErrno::HWCODEC_ERR_NO_PACKET as i32 {
                     Err(HwNoPacket.into())
-                } else if code == hwcodec::common::FFMPEG_RAM_INPUT_REJECTED as i32 {
+                } else if code == HwcodecErrno::HWCODEC_ERR_INPUT_REJECTED as i32 {
                     Err(HwInputRejected.into())
                 } else {
                     Err(anyhow!("RAM encode failed: {}", code))
