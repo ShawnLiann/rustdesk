@@ -32,6 +32,8 @@ mod common;
 /// without a GPU-frame path the option is always `None`, so callers need no
 /// cfg of their own.
 #[cfg(target_os = "macos")]
+pub use hwcodec::ffmpeg_ram::pixelbuffer::PixelBufferFrame;
+#[cfg(target_os = "macos")]
 pub type PixelBufferOutput = Option<hwcodec::ffmpeg_ram::pixelbuffer::PixelBufferFrame>;
 #[cfg(not(target_os = "macos"))]
 pub type PixelBufferOutput = Option<std::convert::Infallible>;

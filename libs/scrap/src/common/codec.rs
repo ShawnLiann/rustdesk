@@ -825,7 +825,7 @@ impl Decoder {
                 ret = true;
                 continue;
             }
-            for image in decoder.last_frames() {
+            for image in decoder.last_frame_images() {
                 // TODO: just process the last frame
                 if image.to_fmt(rgb, i420).is_ok() {
                     ret = true;
