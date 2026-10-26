@@ -71,7 +71,9 @@ gstreamer-video = { version = "0.16", optional = true }
 zbus = { version = "3.15", optional = true }
 
 [dependencies.hwcodec]
-git = "https://github.com/rustdesk-org/hwcodec"
+# TEMPORARY (CI only): pin the companion hwcodec PR until it lands upstream.
+git = "https://github.com/ShawnLiann/hwcodec"
+rev = "95b7489504afe3dc252d0a692d5c6cc8ebeb448e"
 optional = true
 
 [target.'cfg(any(target_os = "windows", target_os = "linux"))'.dependencies]
