@@ -984,7 +984,7 @@ impl InvokeUiSession for FlutterHandler {
     /// Returns true when at least one session took the frame; the caller then
     /// skips pushing the RGBA pixels for this frame.
     #[cfg(target_os = "macos")]
-    pub fn on_pixelbuffer(&self, display: usize, pixelbuffer: &scrap::PixelBufferFrame) -> bool {
+    fn on_pixelbuffer(&self, display: usize, pixelbuffer: &scrap::PixelBufferFrame) -> bool {
         if !*VT_ZEROCOPY_ENABLED {
             return false;
         }
