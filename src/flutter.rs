@@ -348,7 +348,7 @@ pub(super) fn vt_zero_copy_state() -> &'static str {
         if *VT_ZEROCOPY_ENABLED {
             "on"
         } else {
-            "off (RUSTDESK_VT_ZEROCOPY=0) - the texture render path will not paint"
+            "off (RUSTDESK_VT_ZEROCOPY=0)"
         }
     }
     #[cfg(not(target_os = "macos"))]
@@ -704,6 +704,12 @@ impl VideoRenderer {
         FrameTaken::YesNewRenderType
     }
 
+    /// Whether the loaded plugin exports the direct GPU frame entry point.
+    #[cfg(target_os = "macos")]
+    pub fn pixelbuffer_supported(&self) -> bool {
+        self.on_pixelbuffer_func.is_some()
+    }
+
     pub fn reset_all_display_render_type(&self) {
         let mut write_lock = self.map_display_sessions.write().unwrap();
         write_lock
@@ -821,6 +827,28 @@ impl FlutterHandler {
         self.use_texture_render
             .store(crate::ui_interface::use_texture_render(), Ordering::Relaxed);
         self.display_rgbas.write().unwrap().clear();
+        #[cfg(target_os = "macos")]
+        self.sync_gpu_frames_wanted();
+    }
+
+    /// Keep the decoder in step with what this session's renderers can present.
+    ///
+    /// Turning the direct path off has to reach the decoder, not just this
+    /// render layer: the decoder stops producing software pixels for a frame as
+    /// soon as it hands out the GPU one, so rejecting that frame afterwards
+    /// would freeze the picture.
+    #[cfg(target_os = "macos")]
+    pub fn sync_gpu_frames_wanted(&self) {
+        let supported = self
+            .session_handlers
+            .read()
+            .unwrap()
+            .values()
+            .any(|h| h.renderer.pixelbuffer_supported());
+        let wanted = *VT_ZEROCOPY_ENABLED
+            && self.use_texture_render.load(Ordering::Relaxed)
+            && supported;
+        scrap::set_gpu_frames_wanted(wanted);
     }
 }
 
@@ -1599,6 +1627,11 @@ pub fn session_start_(
     if let Some(session) = sessions::get_session_by_session_id(session_id) {
         let is_first_ui_session = session.session_handlers.read().unwrap().len() == 1;
         if !is_connected && is_first_ui_session {
+            // The decoder must agree with this renderer before the first frame,
+            // otherwise it hands out GPU frames nobody presents and the picture
+            // stalls without software pixels to fall back to.
+            #[cfg(target_os = "macos")]
+            session.ui_handler.sync_gpu_frames_wanted();
             log::info!(
                 "Session {} start, use texture render: {}, vt zero-copy: {}",
                 id,
