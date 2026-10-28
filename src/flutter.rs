@@ -3,6 +3,7 @@ use crate::{
     flutter_ffi::{EventToUI, SessionID},
     ui_session_interface::{io_loop, InvokeUiSession, Session},
 };
+use base::message_proto::*;
 use flutter_rust_bridge::StreamSink;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::dlopen::{
@@ -10,10 +11,9 @@ use hbb_common::dlopen::{
     Error as LibError,
 };
 use hbb_common::{
-    anyhow::anyhow, bail, config::LocalConfig, get_version_number, log,
-    rendezvous_proto::ConnType, ResultType,
+    anyhow::anyhow, bail, config::LocalConfig, get_version_number, log, rendezvous_proto::ConnType,
+    ResultType,
 };
-use base::message_proto::*;
 use serde::Serialize;
 use serde_json::json;
 #[cfg(target_os = "windows")]
@@ -118,7 +118,10 @@ pub extern "C" fn rustdesk_core_main() -> bool {
 
         // Native runners bypass Rust's startup, which normally ignores SIGPIPE.
         if unsafe { libc::signal(libc::SIGPIPE, libc::SIG_IGN) } == libc::SIG_ERR {
-            eprintln!("Failed to ignore SIGPIPE: {}", std::io::Error::last_os_error());
+            eprintln!(
+                "Failed to ignore SIGPIPE: {}",
+                std::io::Error::last_os_error()
+            );
             std::process::exit(1);
         }
     }
@@ -372,10 +375,70 @@ impl Default for VideoRenderer {
     }
 }
 
+// ───────────── TEMPORARY INSTRUMENTATION — never submit ─────────────
+// Records, with a millisecond clock shared by every point, the sequence the maintainer asked for:
+// when PeerInfo arrives, when the renderer size is set, when a texture is registered or recreated,
+// and what on_rgba sees for each (session size, frame size) combination. Combinations are logged on
+// first sight and then every 200th time so the log stays readable instead of flooding.
+fn instr_clock_ms() -> u128 {
+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    let s = START.get_or_init(std::time::Instant::now);
+    s.elapsed().as_millis()
+}
+
+fn instr_note(kind: &str, display: usize, detail: &str) {
+    log::warn!(
+        "[INSTR] t={}ms {} display={} {}",
+        instr_clock_ms(),
+        kind,
+        display,
+        detail
+    );
+}
+
+fn instr_frame_state(
+    display: usize,
+    info_size: (usize, usize),
+    frame: (usize, usize),
+    action: &str,
+) {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    static COMBOS: OnceLock<Mutex<HashMap<(usize, usize, usize, usize, usize), u64>>> =
+        OnceLock::new();
+    let m = COMBOS.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(mut m) = m.lock() {
+        let n = m
+            .entry((display, info_size.0, info_size.1, frame.0, frame.1))
+            .or_insert(0);
+        *n += 1;
+        if *n == 1 || *n % 200 == 0 {
+            log::warn!(
+                "[INSTR] t={}ms on_rgba display={} info.size=({},{}) frame=({},{}) action={} seen={}",
+                instr_clock_ms(),
+                display,
+                info_size.0,
+                info_size.1,
+                frame.0,
+                frame.1,
+                action,
+                *n
+            );
+        }
+    }
+}
+// ───────────── END TEMPORARY INSTRUMENTATION ─────────────
+
 impl VideoRenderer {
     #[inline]
     fn set_size(&mut self, display: usize, width: usize, height: usize) {
         let mut sessions_lock = self.map_display_sessions.write().unwrap();
+        let previous = sessions_lock.get(&display).map(|i| i.size);
+        instr_note(
+            "set_size",
+            display,
+            &format!("new=({},{}) previous={:?}", width, height, previous),
+        );
         if let Some(info) = sessions_lock.get_mut(&display) {
             info.size = (width, height);
             info.notify_render_type = None;
@@ -395,6 +458,15 @@ impl VideoRenderer {
 
     fn register_pixelbuffer_texture(&self, display: usize, ptr: usize) {
         let mut sessions_lock = self.map_display_sessions.write().unwrap();
+        instr_note(
+            "register_pixelbuffer_texture",
+            display,
+            &format!(
+                "ptr={} existing={:?}",
+                ptr,
+                sessions_lock.get(&display).map(|i| i.size)
+            ),
+        );
         if ptr == 0 {
             if let Some(info) = sessions_lock.get_mut(&display) {
                 if info.texture_rgba_ptr != usize::default() {
@@ -491,7 +563,20 @@ impl VideoRenderer {
             return false;
         }
 
+        if info.size.0 == rgba.w && info.size.1 == rgba.h {
+            instr_frame_state(display, info.size, (rgba.w, rgba.h), "accept_match");
+        }
         if info.size.0 != rgba.w || info.size.1 != rgba.h {
+            instr_frame_state(
+                display,
+                info.size,
+                (rgba.w, rgba.h),
+                if info.size != (0, 0) {
+                    "reject_wrong_size"
+                } else {
+                    "accept_size_unknown"
+                },
+            );
             log::error!(
                 "width/height mismatch: ({},{}) != ({},{})",
                 info.size.0,
@@ -701,7 +786,8 @@ impl InvokeUiSession for FlutterHandler {
     }
 
     /// unused in flutter, use switch_display or set_peer_info
-    fn set_display(&self, _x: i32, _y: i32, _w: i32, _h: i32, _cursor_embedded: bool, _scale: f64) {}
+    fn set_display(&self, _x: i32, _y: i32, _w: i32, _h: i32, _cursor_embedded: bool, _scale: f64) {
+    }
 
     fn update_privacy_mode(&self) {
         self.push_event::<&str>("update_privacy_mode", &[], &[]);
@@ -898,6 +984,11 @@ impl InvokeUiSession for FlutterHandler {
     }
 
     fn set_peer_info(&self, pi: &PeerInfo) {
+        instr_note(
+            "set_peer_info",
+            usize::default(),
+            &format!("displays_len={}", pi.displays.len()),
+        );
         let displays = Self::make_displays_msg(&pi.displays);
         let mut features: HashMap<&str, bool> = Default::default();
         for ref f in pi.features.iter() {
