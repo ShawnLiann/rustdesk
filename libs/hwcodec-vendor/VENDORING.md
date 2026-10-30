@@ -40,3 +40,21 @@ git -C /tmp/hwcodec checkout pr/macos-pixelbuffer-v2
 # re-apply the local deltas listed above (they are also in this branch's history)
 rsync -a --exclude .git --exclude target /tmp/hwcodec/ libs/hwcodec-vendor/
 ```
+
+## Checking
+
+`scripts/check-vendor-provenance.sh` re-fetches the recorded commit and diffs the whole tree against
+this directory, so "what did you change" is answered mechanically instead of by this document:
+
+```
+$ libs/hwcodec-vendor/scripts/check-vendor-provenance.sh
+added      scripts/verify-encode-zerocopy.sh
+...
+modified   build.rs
+modified   src/ffmpeg_ram/encode.rs
+modified   src/ffmpeg_ram/mod.rs
+OK: vendor == 94d44e6 + the deltas listed in VENDORING.md
+```
+
+Anything outside that list exits non-zero. `--show` prints the diffs themselves.
+
