@@ -244,3 +244,31 @@ jobs:
           name: rustdesk-h264-x86_64
           path: rustdesk-${{ env.VERSION }}-x86_64.dmg
           retention-days: 14
+
+  # The encode zero-copy path is a C++ wrapper called over FFI; a compile error there is only
+  # caught by a build, and the dmg build takes ~50 minutes. This runs the wrapper's own smoke
+  # test in ~2 minutes: it builds a BGRA CVPixelBuffer, pushes frames through the real
+  # VTCompressionSession, and fails if no packet comes back.
+  encode-wrapper-smoke:
+    name: macOS encode wrapper smoke test
+    runs-on: macos-14
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Build and run the wrapper
+        run: |
+          set -euo pipefail
+          SRCDIR=libs/hwcodec-vendor/src/ffmpeg_ram
+          clang++ -fobjc-arc -O2 \
+            -framework VideoToolbox -framework CoreVideo -framework CoreMedia -framework Foundation \
+            "$SRCDIR/vt_pixbuf_encode.mm" "$SRCDIR/test_vt_pixbuf.m" \
+            -I"$SRCDIR" -o /tmp/vt_smoke
+          /tmp/vt_smoke 1920 1080 0
+          /tmp/vt_smoke 3840 2160 0
+          /tmp/vt_smoke 3840 2160 1
