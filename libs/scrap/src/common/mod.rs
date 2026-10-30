@@ -200,17 +200,11 @@ impl Frame<'_> {
             Frame::PixelBuffer(pixelbuffer) => {
                 #[cfg(target_os = "macos")]
                 if encode_pixbuf_enabled() {
-                    let pb = pixelbuffer.create_cvpixelbuffer();
-                    if !pb.is_null() {
-                        announce_pixbuf_once();
-                        return Ok(EncodeInput::PixelBuffer(CVPixelBufferHandle(pb)));
-                    }
-                    // Frame-driven failure: throttle it, an unthrottled warn here would emit one
-                    // line per frame on a machine that cannot wrap the surface.
-                    hbb_common::throttled_log!(
-                        std::time::Duration::from_secs(30),
-                        warn,
-                        "CVPixelBufferCreateWithIOSurface failed, falling back to yuv"
+                    return pixbuf_or_yuv(
+                        true,
+                        || pixelbuffer.create_cvpixelbuffer(),
+                        |yuv| convert_to_yuv(&pixelbuffer, yuvfmt, yuv, mid_data),
+                        yuv,
                     );
                 }
                 convert_to_yuv(&pixelbuffer, yuvfmt, yuv, mid_data)?;
@@ -241,6 +235,36 @@ fn announce_pixbuf_once() {
     ONCE.get_or_init(|| {
         log::info!("encode path: CVPixelBuffer -> VideoToolbox (zero copy), RD_ENCODE_PIXBUF=1")
     });
+}
+
+/// Wrap the captured surface as a `CVPixelBuffer` when that works, otherwise convert to YUV.
+///
+/// The two halves are arguments so that the fallback can be tested without an IOSurface the system
+/// refuses to wrap: a regression that returns early on a null handle would drop every frame while
+/// every other test still passed, which is the failure this signature exists to make visible.
+#[cfg(target_os = "macos")]
+fn pixbuf_or_yuv<'a>(
+    enabled: bool,
+    wrap: impl FnOnce() -> *mut std::ffi::c_void,
+    convert: impl FnOnce(&mut Vec<u8>) -> ResultType<()>,
+    yuv: &'a mut Vec<u8>,
+) -> ResultType<EncodeInput<'a>> {
+    if enabled {
+        let pb = wrap();
+        if !pb.is_null() {
+            announce_pixbuf_once();
+            return Ok(EncodeInput::PixelBuffer(CVPixelBufferHandle(pb)));
+        }
+        // Frame-driven failure: throttle it, an unthrottled warn here would emit one line per frame
+        // on a machine that cannot wrap the surface.
+        hbb_common::throttled_log!(
+            std::time::Duration::from_secs(30),
+            warn,
+            "CVPixelBufferCreateWithIOSurface failed, falling back to yuv"
+        );
+    }
+    convert(yuv)?;
+    Ok(EncodeInput::YUV(yuv))
 }
 
 /// The direct encode path changes what the encoder is fed, so it stays off unless the
@@ -628,3 +652,45 @@ pub fn screen_size() -> (u16, u16, u16) {
 pub fn is_start() -> Option<bool> {
     android::is_start()
 }
+
+#[cfg(all(test, target_os = "macos"))]
+mod pixbuf_fallback_tests {
+    use super::{pixbuf_or_yuv, EncodeInput};
+
+    #[test]
+    fn a_failed_wrap_falls_through_to_the_conversion() {
+        let mut yuv = Vec::new();
+        let input = pixbuf_or_yuv(
+            true,
+            std::ptr::null_mut,
+            |dst| {
+                dst.extend_from_slice(&[9, 8, 7]);
+                Ok(())
+            },
+            &mut yuv,
+        )
+        .expect("fallback must not error when the conversion succeeds");
+        assert!(
+            matches!(input, EncodeInput::YUV(_)),
+            "a null CVPixelBuffer must produce YUV input, not a dropped frame"
+        );
+        assert_eq!(yuv, vec![9, 8, 7], "the conversion must have run");
+    }
+
+    #[test]
+    fn with_the_gate_off_the_wrap_is_never_attempted() {
+        let mut yuv = Vec::new();
+        let input = pixbuf_or_yuv(
+            false,
+            || panic!("the wrap must not be called when the gate is off"),
+            |dst| {
+                dst.push(1);
+                Ok(())
+            },
+            &mut yuv,
+        )
+        .expect("conversion");
+        assert!(matches!(input, EncodeInput::YUV(_)));
+    }
+}
+
