@@ -222,6 +222,14 @@ jobs:
           echo "--- h264_videotoolbox string present ---"
           strings flutter/build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/liblibrustdesk.dylib | grep -c "h264_videotoolbox" || true
 
+      - name: Run the client unit tests
+        run: |
+          # `cargo test` is the only thing that compiles `#[cfg(test)]`; the app build never does, so a
+          # green dmg says nothing about the tests. The filter is the module plus the test-name prefix: a
+          # function name selects nothing and the step still passes with `running 0 tests`.
+          cargo test --locked --features hwcodec,flutter,unix-file-copy-paste --lib \
+            client::io_loop::tests::gpu_refuse_streak_ -- --nocapture
+
       - name: Create unsigned dmg
         run: |
           create-dmg --icon "RustDesk.app" 200 190 --hide-extension "RustDesk.app" \
