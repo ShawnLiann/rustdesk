@@ -95,15 +95,24 @@ else
       -o "$WORK/ab" || { echo "  FAIL cannot build the A/B harness"; exit 2; }
     out=$("$WORK/ab" 40 h264 4096 2304 16 601)
     echo "$out" | grep -E "^current  |^direct  " | sed 's/^/  /'
-    cur=$(echo "$out" | sed -nE 's/^current .*PSNR-Y ([0-9.]+) dB/\1/p')
-    dir=$(echo "$out" | sed -nE 's/^direct .*PSNR-Y ([0-9.]+) dB/\1/p')
-    echo "  psnr current=${cur:-?} direct=${dir:-?}"
+    field() { echo "$1" | awk -v arm="^$2" -v key="$3" '$0 ~ arm { for (i = 1; i <= NF; i++) if ($i == key) print $(i + 1) }'; }
+    cur=$(field "$out" current PSNR-Y)
+    dir=$(field "$out" direct PSNR-Y)
+    cu=$(field "$out" current PSNR-U)
+    du=$(field "$out" direct PSNR-U)
+    dv=$(field "$out" direct PSNR-V)
+    echo "  psnr current=${cur:-?} direct=${dir:-?}  chroma direct U=${du:-?} V=${dv:-?}"
     if [ -z "${cur:-}" ] || [ -z "${dir:-}" ]; then
       echo "  FAIL could not parse PSNR"; fail=1
     else
       if [ "$STRICT" = 1 ]; then
         awk -v c="$cur" -v d="$dir" 'BEGIN { exit (c - d < 1.5) ? 0 : 1 }' \
           || { echo "  FAIL direct path drifted more than 1.5 dB (missing BT.601 tag?)"; fail=1; }
+        # Luma alone cannot see a matrix mistake: with BT.709 attached the luma drops to ~27 dB but a
+        # harness that only checked luma against a loose floor could still pass on some content. The
+        # chroma planes are where the wrong matrix shows most clearly (~33/38 dB against ~43/46).
+        awk -v u="$du" -v v="$dv" 'BEGIN { exit (u >= 38 && v >= 40) ? 0 : 1 }' \
+          || { echo "  FAIL chroma below 38/40 dB (direct U=$du V=$dv): colour matrix is wrong"; fail=1; }
       else
         awk -v d="$dir" 'BEGIN { exit (d >= 40) ? 0 : 1 }' \
           || { echo "  FAIL direct path below 40 dB (missing BT.601 tag?)"; fail=1; }

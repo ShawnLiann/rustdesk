@@ -222,12 +222,26 @@ int main(int argc, char** argv) {
         sum += v; if (v < mn) mn = v; if (v > mx) mx = v;
       }
     double u = 0, v2 = 0; int n = 0;
+    // Chroma error, not just chroma mean: the luma PSNR alone cannot see a BT.601-vs-BT.709 mistake,
+    // because the wrong matrix moves mostly the colour difference signals.
+    double se_u = 0, se_v = 0; int cn = 0;
+    const uint8_t* ref_uv = ref_buf.data() + (size_t)W * H;
     if (CVPixelBufferGetPlaneCount(out) > 1) {
       size_t uvs = CVPixelBufferGetBytesPerRowOfPlane(out, 1);
       uint8_t* up = (uint8_t*)CVPixelBufferGetBaseAddressOfPlane(out, 1);
-      for (int y = 0; y < ph / 2; y++)
-        for (int x = 0; x < pw / 2; x++) { u += up[y * uvs + 2 * x]; v2 += up[y * uvs + 2 * x + 1]; n++; }
+      int cw = pw / 2, ch = ph / 2;
+      for (int y = 0; y < ch; y++)
+        for (int x = 0; x < cw; x++) {
+          int iu = up[y * uvs + 2 * x], iv = up[y * uvs + 2 * x + 1];
+          u += iu; v2 += iv; n++;
+          if (pw == W && ph == H) {
+            double du = (double)iu - ref_uv[(size_t)y * W + 2 * x];
+            double dv = (double)iv - ref_uv[(size_t)y * W + 2 * x + 1];
+            se_u += du * du; se_v += dv * dv; cn++;
+          }
+        }
       u /= n; v2 /= n;
+      if (cn) { se_u /= cn; se_v /= cn; }
     }
     double se = 0;
     if (pw == W && ph == H) {
@@ -238,9 +252,11 @@ int main(int argc, char** argv) {
         }
       se /= (double)pw * ph;
     }
-    printf("%-8s frame %d decoded %dx%d  luma mean %.2f  min %d max %d  cb %.2f cr %.2f  pixfmt %u  PSNR-Y %.2f dB\n",
+    printf("%-8s frame %d decoded %dx%d  luma mean %.2f  min %d max %d  cb %.2f cr %.2f  pixfmt %u  PSNR-Y %.2f dB  PSNR-U %.2f  PSNR-V %.2f\n",
            name, tick, pw, ph, sum / (pw * (double)ph), mn, mx, u, v2,
-           (unsigned)CVPixelBufferGetPixelFormatType(out), se > 0 ? 10 * log10(255.0 * 255.0 / se) : 99.0);
+           (unsigned)CVPixelBufferGetPixelFormatType(out), se > 0 ? 10 * log10(255.0 * 255.0 / se) : 99.0,
+           se_u > 0 ? 10 * log10(255.0 * 255.0 / se_u) : 99.0,
+           se_v > 0 ? 10 * log10(255.0 * 255.0 / se_v) : 99.0);
     CVPixelBufferUnlockBaseAddress(out, kCVPixelBufferLock_ReadOnly);
     CVPixelBufferRelease(out);
     CFRelease(sb);
