@@ -15,6 +15,12 @@
 #      libyuv path. This is the check that catches a missing BT.601 attachment -- it fails hard at
 #      ~27.6 dB when the tag is absent.
 set -uo pipefail
+# Resolve the harness before cd: a relative path would stop matching once we change directory,
+# and the PSNR guard would then skip silently instead of failing.
+AB_ARG=${1:-}
+if [ -n "$AB_ARG" ] && [ -f "$AB_ARG" ]; then
+  AB_ARG="$(cd "$(dirname "$AB_ARG")" && pwd)/$(basename "$AB_ARG")"
+fi
 cd "$(dirname "$0")/.."
 SRC=src/ffmpeg_ram
 WORK=$(mktemp -d)
@@ -40,7 +46,7 @@ echo "  cpu ${cpu} ms/frame"
 awk -v c="$cpu" 'BEGIN { exit (c < 2.0) ? 0 : 1 }' || { echo "  FAIL 4K submit CPU above 2 ms/frame"; fail=1; }
 
 echo "== 3. PSNR guard against the libyuv path =="
-AB=${1:-}
+AB=$AB_ARG
 if [ -z "$AB" ] || [ ! -f "$AB" ]; then
   echo "  SKIP (no encode_synth3.m supplied; pass it as \$1 to enable this check)"
 else
