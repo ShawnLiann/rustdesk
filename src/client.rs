@@ -111,6 +111,8 @@ pub const SEC30: Duration = Duration::from_secs(30);
 const RESTART_REMOTE_DEVICE_GRACE: Duration = Duration::from_secs(5 * 60);
 pub const VIDEO_QUEUE_SIZE: usize = 120;
 const MAX_DECODE_FAIL_COUNTER: usize = 3;
+/// How many keyframes may be requested before a decoder is retired as unsupported.
+const MAX_KEYFRAME_REQUESTS: usize = 3;
 
 pub const LOGIN_MSG_PASSWORD_EMPTY: &str = "Empty Password";
 pub const LOGIN_MSG_PASSWORD_WRONG: &str = "Wrong Password";
@@ -2636,6 +2638,82 @@ mod audio_format_tests {
     }
 }
 
+#[cfg(test)]
+mod decode_failure_tests {
+    use super::{failure_action, FailureAction, MAX_DECODE_FAIL_COUNTER, MAX_KEYFRAME_REQUESTS};
+
+    #[test]
+    fn decode_streak_retires_a_decoder_that_could_not_be_created() {
+        assert_eq!(failure_action(false, 0, 0), FailureAction::RetireCodec);
+        assert_eq!(
+            failure_action(false, MAX_DECODE_FAIL_COUNTER, 2),
+            FailureAction::RetireCodec
+        );
+    }
+
+    #[test]
+    fn decode_streak_asks_for_a_keyframe_before_retiring_the_codec() {
+        assert_eq!(failure_action(true, 0, 0), FailureAction::Wait);
+        assert_eq!(
+            failure_action(true, MAX_DECODE_FAIL_COUNTER - 1, 0),
+            FailureAction::Wait
+        );
+        for requests in 0..MAX_KEYFRAME_REQUESTS {
+            assert_eq!(
+                failure_action(true, MAX_DECODE_FAIL_COUNTER, requests),
+                FailureAction::RequestKeyframe
+            );
+        }
+    }
+
+    #[test]
+    fn decode_streak_retires_the_codec_once_the_budget_is_spent() {
+        assert_eq!(
+            failure_action(true, MAX_DECODE_FAIL_COUNTER, MAX_KEYFRAME_REQUESTS),
+            FailureAction::RetireCodec
+        );
+        assert_eq!(
+            failure_action(true, usize::MAX, MAX_KEYFRAME_REQUESTS),
+            FailureAction::RetireCodec
+        );
+    }
+
+    #[test]
+    fn decode_streak_bounds_match_what_the_pr_states() {
+        assert_eq!(MAX_DECODE_FAIL_COUNTER, 3);
+        assert_eq!(MAX_KEYFRAME_REQUESTS, 3);
+    }
+}
+
+/// What a decoder that exists should be asked to do after a failure streak.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FailureAction {
+    Wait,
+    RequestKeyframe,
+    RetireCodec,
+}
+
+/// A decode failure says the stream was unreadable, not that the codec is unsupported: a fresh
+/// keyframe decodes with the same decoder, so ask for one first and retire the codec only after
+/// `MAX_KEYFRAME_REQUESTS` unanswered requests, or immediately when no decoder could be created.
+fn failure_action(
+    decoder_valid: bool,
+    fail_counter: usize,
+    keyframe_requests: usize,
+) -> FailureAction {
+    if !decoder_valid {
+        return FailureAction::RetireCodec;
+    }
+    if fail_counter < MAX_DECODE_FAIL_COUNTER {
+        return FailureAction::Wait;
+    }
+    if keyframe_requests < MAX_KEYFRAME_REQUESTS {
+        FailureAction::RequestKeyframe
+    } else {
+        FailureAction::RetireCodec
+    }
+}
+
 /// Video handler for the [`Client`].
 pub struct VideoHandler {
     decoder: Decoder,
@@ -2645,6 +2723,7 @@ pub struct VideoHandler {
     record: bool,
     _display: usize, // useful for debug
     fail_counter: usize,
+    keyframe_requests: usize,
     first_frame: bool,
 }
 
@@ -2677,6 +2756,7 @@ impl VideoHandler {
             record: false,
             _display,
             fail_counter: 0,
+            keyframe_requests: 0,
             first_frame: true,
         }
     }
@@ -2704,6 +2784,7 @@ impl VideoHandler {
                 );
                 if res.as_ref().is_ok_and(|x| *x) {
                     self.fail_counter = 0;
+                    self.keyframe_requests = 0;
                 } else {
                     if self.fail_counter < usize::MAX {
                         if self.first_frame && self.fail_counter < MAX_DECODE_FAIL_COUNTER {
@@ -2735,6 +2816,20 @@ impl VideoHandler {
         }
     }
 
+    /// Decide what the last frame's failure should trigger, spending one request when due.
+    fn next_failure_action(&mut self) -> FailureAction {
+        let action = failure_action(
+            self.decoder.valid(),
+            self.fail_counter,
+            self.keyframe_requests,
+        );
+        if action == FailureAction::RequestKeyframe {
+            self.keyframe_requests += 1;
+            self.fail_counter = 0;
+        }
+        action
+    }
+
     /// Reset the decoder, change format if it is Some
     pub fn reset(&mut self, format: Option<CodecFormat>) {
         log::info!(
@@ -2747,6 +2842,7 @@ impl VideoHandler {
         let format = format.unwrap_or(self.decoder.format());
         self.decoder = Decoder::new(format, luid);
         self.fail_counter = 0;
+        self.keyframe_requests = 0;
         self.first_frame = true;
     }
 
@@ -4090,16 +4186,24 @@ pub fn start_video_thread<F, T>(
                         // check invalid decoders
                         let mut should_update_supported = false;
                         if let Some(handler) = video_handler.as_mut() {
-                            if !handler.decoder.valid()
-                                || handler.fail_counter >= MAX_DECODE_FAIL_COUNTER
-                            {
-                                let mut lc = session.lc.write().unwrap();
-                                let format = handler.decoder.format();
-                                if !lc.mark_unsupported.contains(&format) {
-                                    lc.mark_unsupported.push(format);
-                                    should_update_supported = true;
-                                    log::info!("mark {format:?} decoder as unsupported, valid:{}, fail_counter:{}, all unsupported:{:?}", handler.decoder.valid(), handler.fail_counter, lc.mark_unsupported);
+                            match handler.next_failure_action() {
+                                FailureAction::RequestKeyframe => {
+                                    log::info!(
+                                        "asking for a keyframe after a decode failure streak, requests: {}",
+                                        handler.keyframe_requests
+                                    );
+                                    session.refresh_video(display as _);
                                 }
+                                FailureAction::RetireCodec => {
+                                    let mut lc = session.lc.write().unwrap();
+                                    let format = handler.decoder.format();
+                                    if !lc.mark_unsupported.contains(&format) {
+                                        lc.mark_unsupported.push(format);
+                                        should_update_supported = true;
+                                        log::info!("mark {format:?} decoder as unsupported, valid:{}, fail_counter:{}, all unsupported:{:?}", handler.decoder.valid(), handler.fail_counter, lc.mark_unsupported);
+                                    }
+                                }
+                                FailureAction::Wait => {}
                             }
                         }
                         if should_update_supported {
