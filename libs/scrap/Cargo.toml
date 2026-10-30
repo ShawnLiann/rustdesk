@@ -73,7 +73,7 @@ zbus = { version = "3.15", optional = true }
 [dependencies.hwcodec]
 # TEMPORARY (CI snapshot only): point at the companion PR branch.
 git = "https://github.com/ShawnLiann/hwcodec"
-rev = "7140e16c86903ceb42f0075fde280b066fdc9321"
+rev = "94d44e604820fd0f17cbe1a43177bc0d5ab76b23"
 optional = true
 
 [target.'cfg(any(target_os = "windows", target_os = "linux"))'.dependencies]
