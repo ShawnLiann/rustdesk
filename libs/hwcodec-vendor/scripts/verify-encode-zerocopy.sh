@@ -15,6 +15,13 @@
 #      libyuv path. This is the check that catches a missing BT.601 attachment -- it fails hard at
 #      ~27.6 dB when the tag is absent.
 set -uo pipefail
+# STRICT=1 (default): assert an IDR and require the direct path to stay within 1.5 dB of the
+# libyuv path. STRICT=0 is for hosted macOS runners, which have no AppleM2ScalerCSCDriver:
+# there HEVC reports keys=0 while still delivering a decodable stream, and the BGRA path lands
+# ~3 dB from the libyuv path (measured 48.17 vs 51.27) instead of ~0.1 dB on real hardware.
+# In that mode require a bitstream and a 40 dB absolute floor, which still catches a missing
+# BT.601 tag (~27.6 dB on any machine).
+STRICT=${STRICT:-1}
 # Resolve the harness before cd: a relative path would stop matching once we change directory,
 # and the PSNR guard would then skip silently instead of failing.
 AB_ARG=${1:-}
@@ -36,7 +43,11 @@ clang++ "$WORK/vtp.o" "$WORK/test.o" \
 for args in "1920 1080 0" "1920 1080 1" "4096 2304 0" "4096 2304 1"; do
   line=$("$WORK/test_vt_pixbuf" $args) || { echo "FAIL encode: $args"; fail=1; continue; }
   echo "  $line"
-  echo "$line" | grep -q "keys=1" || { echo "  FAIL no keyframe: $args"; fail=1; }
+  if [ "$STRICT" = 1 ]; then
+    echo "$line" | grep -q "keys=1" || { echo "  FAIL no keyframe: $args"; fail=1; }
+  else
+    echo "$line" | grep -qE "bytes=[1-9][0-9]*" || { echo "  FAIL no bitstream: $args"; fail=1; }
+  fi
 done
 
 echo "== 2. submit CPU at 4K =="
@@ -85,8 +96,13 @@ else
     if [ -z "${cur:-}" ] || [ -z "${dir:-}" ]; then
       echo "  FAIL could not parse PSNR"; fail=1
     else
-      awk -v c="$cur" -v d="$dir" 'BEGIN { exit (c - d < 1.5) ? 0 : 1 }' \
-        || { echo "  FAIL direct path drifted more than 1.5 dB (missing BT.601 tag?)"; fail=1; }
+      if [ "$STRICT" = 1 ]; then
+        awk -v c="$cur" -v d="$dir" 'BEGIN { exit (c - d < 1.5) ? 0 : 1 }' \
+          || { echo "  FAIL direct path drifted more than 1.5 dB (missing BT.601 tag?)"; fail=1; }
+      else
+        awk -v d="$dir" 'BEGIN { exit (d >= 40) ? 0 : 1 }' \
+          || { echo "  FAIL direct path below 40 dB (missing BT.601 tag?)"; fail=1; }
+      fi
     fi
   fi
 fi
