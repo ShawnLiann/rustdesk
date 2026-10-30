@@ -237,6 +237,32 @@ fn announce_pixbuf_once() {
     });
 }
 
+/// The decode side of this feature logs a running refusal count so a session can prove which path it
+/// took. The encode side had only a one-shot announcement, which cannot answer "how many frames
+/// actually went direct" in an A/B window. These two counters are that answer.
+#[cfg(target_os = "macos")]
+mod pixbuf_stats {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static WRAPPED: AtomicU64 = AtomicU64::new(0);
+    static FELL_BACK: AtomicU64 = AtomicU64::new(0);
+
+    pub fn wrapped() {
+        WRAPPED.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn fell_back() {
+        FELL_BACK.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn counts() -> (u64, u64) {
+        (
+            WRAPPED.load(Ordering::Relaxed),
+            FELL_BACK.load(Ordering::Relaxed),
+        )
+    }
+}
+
 /// Wrap the captured surface as a `CVPixelBuffer` when that works, otherwise convert to YUV.
 ///
 /// The two halves are arguments so that the fallback can be tested without an IOSurface the system
@@ -252,15 +278,19 @@ fn pixbuf_or_yuv<'a>(
     if enabled {
         let pb = wrap();
         if !pb.is_null() {
+            pixbuf_stats::wrapped();
             announce_pixbuf_once();
             return Ok(EncodeInput::PixelBuffer(CVPixelBufferHandle(pb)));
         }
+        pixbuf_stats::fell_back();
         // Frame-driven failure: throttle it, an unthrottled warn here would emit one line per frame
         // on a machine that cannot wrap the surface.
         hbb_common::throttled_log!(
             std::time::Duration::from_secs(30),
             warn,
-            "CVPixelBufferCreateWithIOSurface failed, falling back to yuv"
+            "CVPixelBufferCreateWithIOSurface failed, falling back to yuv ({} wrapped / {} fell back so far)",
+            pixbuf_stats::counts().0,
+            pixbuf_stats::counts().1
         );
     }
     convert(yuv)?;
@@ -675,6 +705,42 @@ mod pixbuf_fallback_tests {
             "a null CVPixelBuffer must produce YUV input, not a dropped frame"
         );
         assert_eq!(yuv, vec![9, 8, 7], "the conversion must have run");
+    }
+
+    #[test]
+    fn the_counters_separate_direct_frames_from_fallbacks() {
+        let (wrapped_before, fell_before) = super::pixbuf_stats::counts();
+        let mut yuv = Vec::new();
+        let _ = pixbuf_or_yuv(
+            true,
+            std::ptr::null_mut,
+            |dst| {
+                dst.push(0);
+                Ok(())
+            },
+            &mut yuv,
+        )
+        .expect("fallback");
+        let mut yuv2 = Vec::new();
+        let _ = pixbuf_or_yuv(
+            false,
+            || panic!("not called"),
+            |dst| {
+                dst.push(0);
+                Ok(())
+            },
+            &mut yuv2,
+        )
+        .expect("conversion");
+        let (wrapped_after, fell_after) = super::pixbuf_stats::counts();
+        assert_eq!(
+            wrapped_after, wrapped_before,
+            "a frame that never reached the encoder must not be counted as direct"
+        );
+        assert!(
+            fell_after >= fell_before + 1,
+            "the fallback that just ran must be visible in the counter"
+        );
     }
 
     #[test]
