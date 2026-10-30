@@ -231,6 +231,46 @@ int main(int argc, char** argv) {
   printf("current  %.3f ms/frame  (copy %.3f + libyuv %.3f + submit %.3f)\n",
          cur.cpu_total / frames, cur.cpu_copy / frames, cur.cpu_conv / frames, cur.cpu_submit / frames);
   printf("direct   %.3f ms/frame  (submit %.3f)\n", dir.cpu_total / frames, dir.cpu_submit / frames);
+  // Parameter sets live in the format description, not in the sample data; dump them too, as Annex-B,
+  // so the colour tags in the SPS VUI can be parsed instead of assumed.
+  const char* dump_ps = getenv("DUMP");
+  if (dump_ps) {
+    for (int k = 0; k < 2; k++) {
+      CMSampleBufferRef sb = k ? sb_dir : sb_cur;
+      if (!sb) continue;
+      CMFormatDescriptionRef fd = CMSampleBufferGetFormatDescription(sb);
+      char name[512];
+      snprintf(name, sizeof(name), "%s-%s-ps.h264", dump_ps, k ? "direct" : "current");
+      FILE* f = fopen(name, "wb");
+      if (!f) continue;
+      size_t count = 0; int nal_len = 0;
+      if (CMVideoFormatDescriptionGetH264ParameterSetAtIndex(fd, 0, NULL, NULL, &count, &nal_len) == noErr)
+        for (size_t i = 0; i < count; i++) {
+          const uint8_t* ps = NULL; size_t ps_len = 0;
+          if (CMVideoFormatDescriptionGetH264ParameterSetAtIndex(fd, (int)i, &ps, &ps_len, NULL, NULL) == noErr) {
+            const uint8_t sc[4] = {0, 0, 0, 1};
+            fwrite(sc, 1, 4, f);
+            fwrite(ps, 1, ps_len, f);
+          }
+        }
+      fclose(f);
+    }
+  }
+
+  // Dump the first packet of each arm on request, so the colour tags actually written into the
+  // bitstream can be parsed instead of assumed.
+  const char* dump = getenv("DUMP");
+  if (dump) {
+    char name[512];
+    snprintf(name, sizeof(name), "%s-current.h264", dump);
+    FILE* f = fopen(name, "wb");
+    if (f) { fwrite(first_cur, 1, first_cur_len, f); fclose(f); }
+    snprintf(name, sizeof(name), "%s-direct.h264", dump);
+    f = fopen(name, "wb");
+    if (f) { fwrite(first_dir, 1, first_dir_len, f); fclose(f); }
+    printf("dumped %s-{current,direct}.h264\n", dump);
+  }
+
   printf("bitstream bytes: current %zu, direct %zu (same target bitrate, %.2f%% diff)\n", first_cur_len,
          first_dir_len, first_dir_len ? 100.0 * (dir.cpu_total - cur.cpu_total) / cur.cpu_total : 0);
   printf("save %.3f ms/frame (%.0f%%)\n", (cur.cpu_total - dir.cpu_total) / frames,
