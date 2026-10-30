@@ -38,9 +38,9 @@ impl Frame {
         self.bgra_stride
     }
 
-    /// Wrap the captured IOSurface in a CVPixelBuffer without copying the pixels, and tag it with
-    /// the colour matrix the decoder side has always assumed. The caller owns one reference and
-    /// must CFRelease it.
+    /// Wrap the surface without copying, with the matrix VideoToolbox should convert with. The
+    /// attachment is not written into the bitstream (no VUI in the SPS), so the peer still sees
+    /// whatever its decoder assumes. The caller owns one reference and must CFRelease it.
     pub fn create_cvpixelbuffer(&self) -> *mut std::ffi::c_void {
         unsafe {
             let mut pb: *mut std::ffi::c_void = ptr::null_mut();
