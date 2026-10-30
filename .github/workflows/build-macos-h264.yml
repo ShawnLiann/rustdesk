@@ -244,4 +244,4 @@ jobs:
       # Fork-only: the app crate's own unit tests for the renderer-readiness gate, which only exist
       # on this side branch.
       - name: Renderer-readiness unit tests
-        run: cargo test -p rustdesk --lib --features flutter,hwcodec gpu_frames_presentable -- --nocapture
+        run: cargo test -p rustdesk --lib --features flutter,hwcodec gpu_frame_demand_tests -- --nocapture
