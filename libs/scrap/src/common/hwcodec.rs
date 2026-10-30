@@ -934,7 +934,7 @@ mod pixbuf_encode_integration {
     /// frame rate of 30 and gets them six times faster - so an unpaced packet count measures the
     /// drop policy, not the encoder. At 30 fps one frame stays in the pipeline and the rest return.
     #[test]
-    fn no_frames_are_dropped_at_the_natural_frame_rate() {
+    fn only_the_in_flight_frame_is_missing_at_the_natural_rate() {
         const W: usize = 320;
         const H: usize = 240;
         const N: usize = 30;
@@ -960,7 +960,6 @@ mod pixbuf_encode_integration {
             diff = N - packets
         );
     }
-
 
     /// Leak check, not a pass/fail CI test: allocates a fresh 1080p BGRA buffer per frame and
     /// watches RSS. A wrapper that forgets to release one reference per frame leaks 8 MB a frame,
