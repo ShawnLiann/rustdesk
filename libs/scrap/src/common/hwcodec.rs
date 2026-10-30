@@ -369,10 +369,12 @@ impl HwRamDecoder {
                 // producing software frames. The owner installs its own switch
                 // with `set_pixelbuffer_wanted` when its renderer can present
                 // GPU frames.
+                // Reject by default: a decoder nobody configured must keep
+                // producing software frames. The owner installs its own switch
+                // when its renderer can present GPU frames; the value is read per
+                // decode call, so the library holds no shared flag of its own.
                 #[cfg(target_os = "macos")]
                 let pixelbuffer_wanted = crate::gpu_frames_wanted_flag(false);
-                #[cfg(target_os = "macos")]
-                decoder.set_pixelbuffer_wanted(pixelbuffer_wanted.clone());
                 Ok(HwRamDecoder {
                     decoder,
                     info,
@@ -386,9 +388,25 @@ impl HwRamDecoder {
             }
         }
     }
-    pub fn decode<'a>(&'a mut self, data: &[u8]) -> ResultType<Vec<HwRamDecoderImage<'a>>> {
-        match self.decoder.decode(data) {
-            Ok(v) => Ok(v.iter().map(|f| HwRamDecoderImage { frame: f }).collect()),
+    /// Decode one packet and hand back this call's output as a whole.
+    ///
+    /// The surface and the software frames belong to the same transaction, so they
+    /// are read from one borrow instead of through two calls on the decoder: taking
+    /// the surface first and then the software images is a normal sequence here,
+    /// not a borrow-checker workaround.
+    pub fn decode<'a>(&'a mut self, data: &[u8]) -> ResultType<HwRamDecoded<'a>> {
+        let want = {
+            #[cfg(target_os = "macos")]
+            {
+                self.pixelbuffer_wanted()
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                false
+            }
+        };
+        match self.decoder.decode_gpu(data, want) {
+            Ok(out) => Ok(HwRamDecoded { out }),
             Err(e) => Err(anyhow!(e)),
         }
     }
@@ -407,29 +425,42 @@ impl HwRamDecoder {
     /// Install the owner's "can the renderer present GPU frames" handle.
     ///
     /// Called once per decoder owner (session / display video handler), so two
-    /// sessions with different render paths do not share one switch.
+    /// sessions with different render paths do not share one switch. It stays on
+    /// this side: the decoder is told the decision for each call instead of holding
+    /// a reference to the application's policy.
     #[cfg(target_os = "macos")]
     pub fn set_pixelbuffer_wanted(&mut self, wanted: crate::GpuFramesWanted) {
-        self.pixelbuffer_wanted = wanted.clone();
-        self.decoder.set_pixelbuffer_wanted(wanted);
+        self.pixelbuffer_wanted = wanted;
     }
+}
 
-    /// Take the GPU frame produced by the last `decode` call, if any.
-    ///
-    /// `decode` hands out a mutable borrow, so callers read the GPU frame first
-    /// and then the software frames through [`Self::last_frame_images`].
-    #[cfg(target_os = "macos")]
-    pub fn take_pixelbuffer(&mut self) -> crate::PixelBufferOutput {
-        self.decoder.take_pixelbuffer()
-    }
+/// One decode call's output: software frames and, on macOS, a surface.
+pub struct HwRamDecoded<'a> {
+    out: &'a mut hwcodec::ffmpeg_ram::decode::DecodeOutput,
+}
 
-    /// Software frames of the last `decode` call, behind a shared borrow.
-    pub fn last_frame_images(&self) -> Vec<HwRamDecoderImage<'_>> {
-        self.decoder
-            .last_frames()
+impl HwRamDecoded<'_> {
+    /// The software frames this call produced.
+    pub fn images(&self) -> Vec<HwRamDecoderImage<'_>> {
+        self.out
+            .frames
             .iter()
             .map(|f| HwRamDecoderImage { frame: f })
             .collect()
+    }
+
+    /// Take the surface this call produced, if any.
+    ///
+    /// A surface means the decoder skipped the software transfer for this frame, so
+    /// the caller must present it instead of the software images.
+    #[cfg(target_os = "macos")]
+    pub fn take_pixelbuffer(&mut self) -> crate::PixelBufferOutput {
+        self.out.take_pixelbuffer()
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub fn take_pixelbuffer(&mut self) -> crate::PixelBufferOutput {
+        None
     }
 }
 
