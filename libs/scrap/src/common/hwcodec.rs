@@ -830,3 +830,128 @@ pub fn start_check_process() {
         std::thread::spawn(f);
     });
 }
+
+/// The C wrapper is covered by `libs/hwcodec-vendor/scripts/verify-encode-zerocopy.sh`, but that
+/// never goes through the Rust side: the handle's ownership, the `EncodeInput::PixelBuffer`
+/// routing and the `ms` unit. This test does, with a real VideoToolbox encoder.
+#[cfg(all(test, target_os = "macos", feature = "hwcodec"))]
+mod pixbuf_encode_integration {
+    use super::*;
+    use crate::common::CVPixelBufferHandle;
+    use std::os::raw::{c_int, c_void};
+
+    const K_CV_PIXEL_FORMAT_32_BGRA: u32 = 0x4247_5241; // 'BGRA'
+
+    #[link(name = "CoreVideo", kind = "framework")]
+    extern "C" {
+        fn CVPixelBufferCreate(
+            allocator: *const c_void,
+            width: usize,
+            height: usize,
+            pixel_format: u32,
+            attributes: *const c_void,
+            out: *mut *mut c_void,
+        ) -> c_int;
+        fn CVPixelBufferLockBaseAddress(buffer: *mut c_void, flags: u64) -> c_int;
+        fn CVPixelBufferUnlockBaseAddress(buffer: *mut c_void, flags: u64) -> c_int;
+        fn CVPixelBufferGetBaseAddress(buffer: *mut c_void) -> *mut c_void;
+        fn CVPixelBufferGetBytesPerRow(buffer: *mut c_void) -> usize;
+    }
+
+    /// A BGRA buffer with a moving gradient, so two frames are never byte-identical.
+    fn make_frame(width: usize, height: usize, phase: u8) -> *mut c_void {
+        let mut buffer: *mut c_void = std::ptr::null_mut();
+        let status = unsafe {
+            CVPixelBufferCreate(
+                std::ptr::null(),
+                width,
+                height,
+                K_CV_PIXEL_FORMAT_32_BGRA,
+                std::ptr::null(),
+                &mut buffer,
+            )
+        };
+        assert_eq!(status, 0, "CVPixelBufferCreate failed: {status}");
+        assert!(!buffer.is_null());
+
+        unsafe {
+            assert_eq!(CVPixelBufferLockBaseAddress(buffer, 0), 0);
+            let stride = CVPixelBufferGetBytesPerRow(buffer);
+            let base = CVPixelBufferGetBaseAddress(buffer) as *mut u8;
+            for y in 0..height {
+                for x in 0..width {
+                    let p = base.add(y * stride + x * 4);
+                    *p = (x + phase as usize) as u8;
+                    *p.add(1) = (y + phase as usize) as u8;
+                    *p.add(2) = phase;
+                    *p.add(3) = 0xff;
+                }
+            }
+            assert_eq!(CVPixelBufferUnlockBaseAddress(buffer, 0), 0);
+        }
+        buffer
+    }
+
+    /// `VideoFrame` is a oneof; the packets live behind `h264s`/`h265s`.
+    fn packets(message: &VideoFrame) -> &[EncodedVideoFrame] {
+        match message.union.as_ref() {
+            Some(base::message_proto::video_frame::Union::H264s(f)) => &f.frames,
+            Some(base::message_proto::video_frame::Union::H265s(f)) => &f.frames,
+            _ => &[],
+        }
+    }
+
+    fn encoder(width: usize, height: usize) -> HwRamEncoder {
+        let cfg = EncoderCfg::HWRAM(HwRamEncoderConfig {
+            name: "h264_videotoolbox".to_owned(),
+            mc_name: None,
+            width,
+            height,
+            quality: 60.0,
+            keyframe_interval: Some(30),
+        });
+        HwRamEncoder::new(cfg, false).expect("h264_videotoolbox encoder")
+    }
+
+    #[test]
+    fn encodes_a_bgra_pixel_buffer_end_to_end() {
+        const W: usize = 320;
+        const H: usize = 240;
+        let mut enc = encoder(W, H);
+
+        let mut total = 0usize;
+        let mut keyframes = 0usize;
+        let mut seen_output = false;
+        // VideoToolbox buffers the first few frames; a single frame legitimately yields no packet
+        // and this API reports that as an error, so keep feeding until the stream starts.
+        for i in 0..30 {
+            let buffer = make_frame(W, H, (i * 17) as u8);
+            let message = match enc.encode_to_message(
+                EncodeInput::PixelBuffer(CVPixelBufferHandle(buffer)),
+                i as i64 * 33,
+            ) {
+                Ok(message) => message,
+                Err(err) if err.to_string().contains("no valid frame") => continue,
+                Err(err) => panic!("encode_to_message failed: {}", err),
+            };
+            let packets = packets(&message);
+            if !seen_output && !packets.is_empty() {
+                // The first packet of a stream must be an IDR, otherwise no decoder can join.
+                assert!(packets[0].key, "first packet is not a keyframe");
+                seen_output = true;
+            }
+            total += packets.iter().map(|p| p.data.len()).sum::<usize>();
+            keyframes += packets.iter().filter(|p| p.key).count();
+        }
+
+        assert!(total > 0, "no encoded bytes at 320x240");
+        assert!(keyframes > 0, "no keyframe in 5 frames");
+        // Frames must still be distinguishable at the byte level - a wrapper that ignores its
+        // input would return the same packet every time.
+        let a = make_frame(W, H, 0);
+        let b = make_frame(W, H, 200);
+        assert_ne!(a, b);
+        drop(CVPixelBufferHandle(a));
+        drop(CVPixelBufferHandle(b));
+    }
+}
