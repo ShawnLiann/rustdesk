@@ -800,6 +800,12 @@ mod pixbuf_encode_integration {
         fn CVPixelBufferGetBytesPerRow(buffer: *mut c_void) -> usize;
     }
 
+    #[link(name = "CoreFoundation", kind = "framework")]
+    extern "C" {
+        fn CFGetRetainCount(obj: *const c_void) -> isize;
+        fn CFRetain(obj: *const c_void) -> *const c_void;
+    }
+
     /// A BGRA buffer with a moving gradient, so two frames are never byte-identical.
     fn make_frame(width: usize, height: usize, phase: u8) -> *mut c_void {
         let mut buffer: *mut c_void = std::ptr::null_mut();
@@ -895,5 +901,26 @@ mod pixbuf_encode_integration {
         assert_ne!(a, b);
         drop(CVPixelBufferHandle(a));
         drop(CVPixelBufferHandle(b));
+    }
+
+    /// `CVPixelBufferHandle` owns exactly one reference: dropping it must not eat a reference the
+    /// caller still holds, and must not leak one. Both mistakes are invisible until a frame is
+    /// released while the encoder is still reading it.
+    #[test]
+    fn handle_releases_exactly_one_reference() {
+        let buffer = make_frame(64, 64, 7);
+        let before = unsafe { CFGetRetainCount(buffer) };
+        unsafe { CFRetain(buffer) };
+        assert_eq!(unsafe { CFGetRetainCount(buffer) }, before + 1);
+
+        drop(CVPixelBufferHandle(buffer));
+
+        assert_eq!(
+            unsafe { CFGetRetainCount(buffer) },
+            before,
+            "the handle took one reference and must give back exactly one"
+        );
+        // Release the caller's reference too, so the test does not leak either.
+        drop(CVPixelBufferHandle(buffer));
     }
 }
