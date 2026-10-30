@@ -983,17 +983,22 @@ mod pixbuf_encode_integration {
                 .unwrap_or(0)
         }
 
-        const W: usize = 1920;
-        const H: usize = 1080;
-        const N: usize = 600;
+        // Override to probe a different frame size without editing the test:
+        //   PIXBUF_LEAK_W=4096 PIXBUF_LEAK_H=2304 PIXBUF_LEAK_FRAMES=200
+        let env_usize = |key: &str, default: usize| {
+            std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+        };
+        let w: usize = env_usize("PIXBUF_LEAK_W", 1920);
+        let h: usize = env_usize("PIXBUF_LEAK_H", 1080);
+        let n: usize = env_usize("PIXBUF_LEAK_FRAMES", 600);
         const WARMUP: usize = 100;
 
-        let mut enc = encoder(W, H);
+        let mut enc = encoder(w, h);
         let start = rss_kb();
         let mut baseline = start;
         let mut samples = Vec::new();
-        for i in 0..N {
-            let buffer = make_frame(W, H, (i * 3) as u8);
+        for i in 0..n {
+            let buffer = make_frame(w, h, (i * 3) as u8);
             let _ = enc.encode_to_message(
                 EncodeInput::PixelBuffer(CVPixelBufferHandle(buffer)),
                 i as i64 * 33,
@@ -1009,7 +1014,10 @@ mod pixbuf_encode_integration {
         }
         let end = rss_kb();
         let growth = end as i64 - baseline as i64;
-        println!("start {start} kB, warm-up {baseline} kB, end {end} kB, growth {growth} kB over {} frames", N - WARMUP);
+        println!(
+            "start {start} kB, warm-up {baseline} kB, end {end} kB, growth {growth} kB over {} frames at {w}x{h}",
+            n - WARMUP
+        );
         assert!(
             growth < 64 * 1024,
             "RSS grew {} kB after warm-up: a released-per-frame wrapper should stay flat",
