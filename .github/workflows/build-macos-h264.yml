@@ -111,6 +111,13 @@ jobs:
           sed -i -e "s/MACOSX_DEPLOYMENT_TARGET = [0-9]*.[0-9]*;/MACOSX_DEPLOYMENT_TARGET = ${MIN_MACOS_VERSION};/" flutter/macos/Runner.xcodeproj/project.pbxproj
           ./build.py --flutter --hwcodec --unix-file-copy-paste --screencapturekit
 
+      # Two claims are only prose without this step: that the pixel-buffer path stays off unless
+      # RD_ENCODE_PIXBUF is exactly "1", and that scrap still builds when hwcodec is not compiled
+      # in. `cargo test --no-default-features` compiles the second and runs the first.
+      - name: Test the opt-in gate without hwcodec
+        run: |
+          cargo test -p scrap --no-default-features pixbuf_env -- --nocapture
+
       - name: Show warm-up instrumentation strings
         run: |
           echo "--- binary contains WARMUP log ---"
