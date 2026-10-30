@@ -859,14 +859,20 @@ impl FlutterHandler {
     /// render layer: the decoder stops producing software pixels for a frame as
     /// soon as it hands out the GPU one, so rejecting that frame afterwards
     /// would freeze the picture.
+    ///
+    /// Every attached renderer has to be able to present a surface, not just one
+    /// of them: a renderer that is left out receives neither format, because the
+    /// decoder has already skipped the software transfer for the frame it handed
+    /// out. See `gpu_frames_presentable` for what "ready" requires.
     #[cfg(all(target_os = "macos", feature = "hwcodec"))]
     pub fn sync_gpu_frames_wanted(&self) {
-        let supported = self
-            .session_handlers
-            .read()
-            .unwrap()
-            .values()
-            .any(|h| h.renderer.pixelbuffer_supported());
+        let supported = gpu_frames_presentable(
+            self.session_handlers
+                .read()
+                .unwrap()
+                .values()
+                .map(|h| h.renderer.pixelbuffer_supported()),
+        );
         let wanted = *VT_ZEROCOPY_ENABLED
             && self.use_texture_render.load(Ordering::Relaxed)
             && supported;
@@ -2412,6 +2418,13 @@ pub mod sessions {
                 None => {}
             }
         }
+        // A renderer just left a session, so the remaining ones have to be
+        // re-checked: the decoders should not keep handing out surfaces once a
+        // renderer that cannot present one is the only one attached.
+        #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+        for s in SESSIONS.read().unwrap().values() {
+            s.ui_handler.sync_gpu_frames_wanted();
+        }
         let s = SESSIONS.write().unwrap().remove(&remove_peer_key?);
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         update_session_count_to_server();
@@ -2708,5 +2721,51 @@ pub(super) mod async_tasks {
             super::APP_TYPE_MAIN,
             serde_json::ser::to_string(&data).unwrap_or("".to_owned()),
         );
+    }
+}
+
+
+/// Whether the decoders of a session may hand out decoded GPU frames.
+///
+/// Two conditions, both load-bearing:
+///
+/// * every attached renderer must be able to present a surface -- the decoder
+///   skips its software transfer for a frame it hands out, so a renderer that is
+///   left out of the demand receives neither format;
+/// * there must be at least one renderer, because "all of nothing" is not a
+///   reason to ask for surfaces nobody can show.
+#[cfg(all(target_os = "macos", feature = "hwcodec"))]
+fn gpu_frames_presentable(ready: impl Iterator<Item = bool>) -> bool {
+    let mut seen = false;
+    for can_present in ready {
+        seen = true;
+        if !can_present {
+            return false;
+        }
+    }
+    seen
+}
+
+#[cfg(all(test, target_os = "macos", feature = "hwcodec"))]
+mod gpu_frame_demand_tests {
+    use super::*;
+
+    #[test]
+    fn no_renderer_is_not_ready() {
+        // `Iterator::all` on an empty set is vacuously true; asking for surfaces
+        // with nothing to present to is exactly what this guards against.
+        assert!(!gpu_frames_presentable(std::iter::empty()));
+    }
+
+    #[test]
+    fn every_renderer_ready_is_ready() {
+        assert!(gpu_frames_presentable([true, true, true].into_iter()));
+    }
+
+    #[test]
+    fn one_unready_renderer_holds_the_rest_back() {
+        // The second window between attaching and registering its texture.
+        assert!(!gpu_frames_presentable([true, false].into_iter()));
+        assert!(!gpu_frames_presentable([false, true].into_iter()));
     }
 }

@@ -881,8 +881,9 @@ impl Decoder {
                 // and the software conversion that used to fill these in never
                 // runs on this path, so a recording would otherwise open at 0x0
                 // (or at the last software frame's size). No pixels are copied.
-                rgb.w = frame.width() as usize;
-                rgb.h = frame.height() as usize;
+                let (width, height) = recorder_dimensions(frame.width(), frame.height());
+                rgb.w = width;
+                rgb.h = height;
                 *pixelbuffer = Some(frame);
                 ret = true;
                 continue;
@@ -998,6 +999,16 @@ impl Presented {
     fn evicts_surface(self) -> bool {
         matches!(self, Presented::Software)
     }
+}
+
+/// The size the recorder is told about when the presented frame is a surface.
+///
+/// A recording opened while the direct path is on must not fall back to 0x0 or to
+/// the last software frame's size, which is what happens when nothing fills in
+/// `ImageRgb` -- the software conversion that normally does never runs here.
+#[cfg(feature = "hwcodec")]
+fn recorder_dimensions(surface_width: i32, surface_height: i32) -> (usize, usize) {
+    (surface_width as usize, surface_height as usize)
 }
 
 /// `surface` -- a surface was taken for this packet; `software_ok` -- a software
@@ -1356,6 +1367,15 @@ mod presentation_tests {
         let p = presented(false, false);
         assert_eq!(p, Presented::Nothing);
         assert!(!p.evicts_surface());
+    }
+
+    #[test]
+    fn the_recorder_is_told_the_surface_size() {
+        // Covers the second half of the finding: a recording opened on a surface
+        // frame has to learn the frame's size from somewhere, since the software
+        // conversion that normally fills `ImageRgb` never runs on this path.
+        assert_eq!(recorder_dimensions(4096, 2304), (4096, 2304));
+        assert_eq!(recorder_dimensions(1920, 1080), (1920, 1080));
     }
 
     #[test]
