@@ -1075,5 +1075,36 @@ mod pixbuf_encode_integration {
             growth
         );
     }
+
+
+    /// Diagnostic, not a guard: asks whether a pixel buffer handed to an encoder that is *not*
+    /// VideoToolbox still lands in a VideoToolbox session. `format_from_name` only looks at the
+    /// codec name, so if this succeeds the chosen software encoder was bypassed.
+    ///
+    ///   cargo test -p scrap --features hwcodec software_name -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn software_name_still_goes_through_videotoolbox() {
+        for name in ["h264", "openh264", "h264_videotoolbox"] {
+            let cfg = EncoderCfg::HWRAM(HwRamEncoderConfig {
+                name: name.to_owned(),
+                mc_name: None,
+                width: 640,
+                height: 480,
+                quality: 60.0,
+                keyframe_interval: Some(30),
+            });
+            match HwRamEncoder::new(cfg, false) {
+                Err(e) => println!("{name:20} -> cannot create: {e}"),
+                Ok(mut enc) => {
+                    let buffer = make_frame(640, 480, 7);
+                    match enc.encode_to_message(EncodeInput::PixelBuffer(CVPixelBufferHandle(buffer)), 0) {
+                        Ok(_) => println!("{name:20} -> encoded (the name was ignored)"),
+                        Err(e) => println!("{name:20} -> error: {e}"),
+                    }
+                }
+            }
+        }
+    }
 }
 
