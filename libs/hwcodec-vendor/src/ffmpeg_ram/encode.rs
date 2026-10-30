@@ -38,6 +38,7 @@ pub struct EncodeContext {
     pub thread_count: i32,
 }
 
+#[derive(Clone)]
 pub struct EncodeFrame {
     pub data: Vec<u8>,
     pub pts: i64,
@@ -134,10 +135,8 @@ impl Encoder {
         }
     }
 
-    /// macOS only: submit a CVPixelBuffer (IOSurface-backed is the point) and get the encoded
-    /// packets back. Keeps its own VTCompressionSession, so it bypasses ffmpeg and the CPU-side
-    /// BGRA → NV12 conversion entirely. The buffer is tagged BT.601 by the C++ side when it carries
-    /// no matrix attachment, which is what keeps the image identical to the libyuv path.
+    /// macOS: submit a CVPixelBuffer (IOSurface-backed is the point) and return encoded packets.
+    /// Own VTCompressionSession, so no ffmpeg and no CPU-side BGRA -> NV12 conversion.
     #[cfg(target_os = "macos")]
     pub fn encode_pixbuf(
         &mut self,
@@ -310,8 +309,8 @@ impl Encoder {
         #[cfg(target_os = "macos")]
         {
             let (h264, h265, _, _) = crate::common::get_video_toolbox_codec_support();
-            // local build: re-enabled on purpose, upstream disables it ("h264 encode failed too
-            // often, not AV_CODEC_CAP_HARDWARE"). Revert before proposing anything upstream.
+            // local build only: re-enabled on purpose, upstream disables it ("h264 encode failed
+            // too often, not AV_CODEC_CAP_HARDWARE"). Revert before proposing anything upstream.
             if h264 {
                 codecs.push(CodecInfo {
                     name: "h264_videotoolbox".to_owned(),

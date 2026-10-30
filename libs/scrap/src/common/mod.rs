@@ -198,6 +198,14 @@ impl Frame<'_> {
     ) -> ResultType<EncodeInput<'a>> {
         match self {
             Frame::PixelBuffer(pixelbuffer) => {
+                #[cfg(target_os = "macos")]
+                if encode_pixbuf_enabled() {
+                    let pb = pixelbuffer.create_cvpixelbuffer();
+                    if !pb.is_null() {
+                        return Ok(EncodeInput::PixelBuffer(CVPixelBufferHandle(pb)));
+                    }
+                    log::warn!("CVPixelBufferCreateWithIOSurface failed, falling back to yuv");
+                }
                 convert_to_yuv(&pixelbuffer, yuvfmt, yuv, mid_data)?;
                 Ok(EncodeInput::YUV(yuv))
             }
@@ -206,9 +214,35 @@ impl Frame<'_> {
     }
 }
 
+/// Owns one reference on a CVPixelBufferRef and releases it when the frame is done being encoded.
+#[cfg(target_os = "macos")]
+pub struct CVPixelBufferHandle(pub *mut c_void);
+
+#[cfg(target_os = "macos")]
+impl Drop for CVPixelBufferHandle {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe { crate::quartz::ffi::CFRelease(self.0 as *const c_void) }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn encode_pixbuf_enabled() -> bool {
+    use std::sync::OnceLock;
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        std::env::var("RD_ENCODE_PIXBUF")
+            .map(|v| v == "1")
+            .unwrap_or(false)
+    })
+}
+
 pub enum EncodeInput<'a> {
     YUV(&'a [u8]),
     Texture((*mut c_void, usize)),
+    #[cfg(target_os = "macos")]
+    PixelBuffer(CVPixelBufferHandle),
     #[cfg(all(windows, feature = "vram"))]
     Repeat,
 }
@@ -217,6 +251,11 @@ impl<'a> EncodeInput<'a> {
     pub fn yuv(&self) -> ResultType<&'_ [u8]> {
         match self {
             Self::YUV(f) => Ok(f),
+            #[cfg(target_os = "macos")]
+            Self::PixelBuffer(_) => Err(crate::Error::BadPtr(
+                "pixel buffer input has no yuv slice".to_owned(),
+            )
+            .into()),
             _ => bail!("not pixelfbuffer frame"),
         }
     }
