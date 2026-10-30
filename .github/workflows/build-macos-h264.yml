@@ -240,3 +240,7 @@ jobs:
       # PR's own CI, which is still waiting for workflow approval.
       - name: Frame-presentation unit tests
         run: cargo test -p scrap --features hwcodec --lib presentation_tests -- --nocapture
+
+      # Fork-only: the app crate's own unit tests for the renderer-readiness gate.
+      - name: Renderer-readiness unit tests
+        run: cargo test -p rustdesk --lib --features flutter,hwcodec gpu_frames_presentable -- --nocapture
