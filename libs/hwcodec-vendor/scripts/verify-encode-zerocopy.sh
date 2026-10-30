@@ -3,6 +3,10 @@
 #
 #   scripts/verify-encode-zerocopy.sh [path-to-encode_synth3.m]
 #
+# Set LIBYUV_PREFIX to a directory holding include/libyuv.h and lib/libyuv.a to use a specific
+# libyuv build (CI builds one there); otherwise the script looks in VCPKG_ROOT, Homebrew and
+# the old bench tree.
+#
 # Guards, in order:
 #   1. the wrapper compiles and encodes: keyframe present, non-zero bitstream, every frame delivered
 #   2. submit CPU at 4K stays below 2 ms/frame (a regression here means the pixel buffer path became
@@ -44,7 +48,8 @@ else
   LIBYUV_LIB=""
   # Take headers and library from the SAME base and stop at the first complete pair: mixing a
   # stale header tree with a newer library fails to compile (LIBYUV_BOOL, cpu_support.h).
-  for base in "${VCPKG_ROOT:-}/installed/arm64-osx" /opt/homebrew "$HOME/rd-arm/bench/libyuv"; do
+  for base in "${LIBYUV_PREFIX:-}" "${VCPKG_ROOT:-}/installed/arm64-osx" /opt/homebrew "$HOME/rd-arm/bench/libyuv"; do
+    [ -n "$base" ] || continue
     inc="" lib=""
     if [ -f "$base/include/libyuv.h" ] || [ -d "$base/include/libyuv" ]; then inc="$base/include"; fi
     for cand in "$base/lib/libyuv.a" "$base/lib/libyuv.dylib" "$base/libyuv.a"; do
