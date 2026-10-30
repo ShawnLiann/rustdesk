@@ -202,6 +202,7 @@ impl Frame<'_> {
                 if encode_pixbuf_enabled() {
                     let pb = pixelbuffer.create_cvpixelbuffer();
                     if !pb.is_null() {
+                        announce_pixbuf_once();
                         return Ok(EncodeInput::PixelBuffer(CVPixelBufferHandle(pb)));
                     }
                     log::warn!("CVPixelBufferCreateWithIOSurface failed, falling back to yuv");
@@ -225,6 +226,16 @@ impl Drop for CVPixelBufferHandle {
             unsafe { crate::quartz::ffi::CFRelease(self.0 as *const c_void) }
         }
     }
+}
+
+#[cfg(target_os = "macos")]
+#[cfg(target_os = "macos")]
+fn announce_pixbuf_once() {
+    use std::sync::OnceLock;
+    static ONCE: OnceLock<()> = OnceLock::new();
+    ONCE.get_or_init(|| {
+        log::info!("encode path: CVPixelBuffer -> VideoToolbox (zero copy), RD_ENCODE_PIXBUF=1")
+    });
 }
 
 #[cfg(target_os = "macos")]
