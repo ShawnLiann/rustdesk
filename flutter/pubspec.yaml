@@ -92,8 +92,9 @@ dependencies:
   flutter_keyboard_visibility: ^5.4.0
   texture_rgba_renderer:
     git:
-      url: https://github.com/rustdesk-org/flutter_texture_rgba_renderer
       # TEMPORARY (CI snapshot only): #3 stacked on the maintainer's fix-texture-lifetime.
+      # The ref lives in our fork, so the url has to point there too.
+      url: https://github.com/ShawnLiann/flutter_texture_rgba_renderer
       ref: fe1cca9bfd164ad39ccdac48290e6da50849ce48
   percent_indicator: ^4.2.2
   dropdown_button2: ^2.0.0
