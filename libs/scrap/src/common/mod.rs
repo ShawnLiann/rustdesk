@@ -199,7 +199,7 @@ impl Frame<'_> {
         match self {
             Frame::PixelBuffer(pixelbuffer) => {
                 #[cfg(target_os = "macos")]
-                if encode_pixbuf_enabled() {
+                if encode_pixbuf_enabled() && wraps_video_toolbox_codec() {
                     return pixbuf_or_yuv(
                         true,
                         || pixelbuffer.create_cvpixelbuffer(),
@@ -269,6 +269,16 @@ mod pixbuf_stats {
 /// refuses to wrap: a regression that returns early on a null handle would drop every frame while
 /// every other test still passed, which is the failure this signature exists to make visible.
 #[cfg(target_os = "macos")]
+/// A software encoder takes a yuv slice and fails on a pixel buffer, so only the VideoToolbox
+/// codecs may be handed one.
+#[cfg(target_os = "macos")]
+fn wraps_video_toolbox_codec() -> bool {
+    matches!(
+        crate::codec::Encoder::negotiated_codec(),
+        CodecFormat::H264 | CodecFormat::H265
+    )
+}
+
 fn pixbuf_or_yuv<'a>(
     enabled: bool,
     wrap: impl FnOnce() -> *mut std::ffi::c_void,
