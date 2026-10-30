@@ -21,6 +21,9 @@ jobs:
     name: macOS arm64 (h264 test)
     needs: [generate-bridge]
     runs-on: macos-14
+    # Build steps run dependency build scripts; keep the token read-only.
+    permissions:
+      contents: read
     steps:
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410
@@ -33,6 +36,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          # vcpkg and cargo build scripts run in this job; do not leave the token in .git/config.
+          persist-credentials: false
 
       - name: Install build runtime
         run: |
@@ -130,6 +135,9 @@ jobs:
     name: macOS x86_64 (h264 test)
     needs: [generate-bridge]
     runs-on: macos-15-intel
+    # Build steps run dependency build scripts; keep the token read-only.
+    permissions:
+      contents: read
     steps:
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410
@@ -142,6 +150,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          # vcpkg and cargo build scripts run in this job; do not leave the token in .git/config.
+          persist-credentials: false
 
       - name: Install build runtime
         run: |
