@@ -3244,7 +3244,7 @@ mod tests {
             streak = next;
         }
         assert_eq!(streak, GPU_FRAME_REFUSE_LIMIT - 1);
-        let (reset_streak, healed) = next_refuse_streak(streak - 1, GPU_FRAME_REFUSE_LIMIT);
+        let (reset_streak, healed) = next_refuse_streak(streak, GPU_FRAME_REFUSE_LIMIT);
         assert_eq!((reset_streak, healed), (0, true));
     }
 
