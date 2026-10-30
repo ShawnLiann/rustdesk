@@ -899,6 +899,10 @@ mod pixbuf_encode_integration {
     }
 
     /// `VideoFrame` is a oneof; the packets live behind `h264s`/`h265s`.
+    fn packets_of(message: &VideoFrame) -> &[EncodedVideoFrame] {
+        packets(message)
+    }
+
     fn packets(message: &VideoFrame) -> &[EncodedVideoFrame] {
         match message.union.as_ref() {
             Some(base::message_proto::video_frame::Union::H264s(f)) => &f.frames,
@@ -981,4 +985,38 @@ mod pixbuf_encode_integration {
         // Release the caller's reference too, so the test does not leak either.
         drop(CVPixelBufferHandle(buffer));
     }
+
+
+    /// Frames are submitted at the natural rate here on purpose. Feeding the same 60 frames back to
+    /// back makes VideoToolbox drop about ten of them, because it is configured with an expected
+    /// frame rate of 30 and gets them six times faster - so an unpaced packet count measures the
+    /// drop policy, not the encoder. At 30 fps one frame stays in the pipeline and the rest return.
+    #[test]
+    fn no_frames_are_dropped_at_the_natural_frame_rate() {
+        const W: usize = 320;
+        const H: usize = 240;
+        const N: usize = 30;
+        let mut enc = encoder(W, H);
+        let mut packets = 0usize;
+        let mut empty_calls = 0usize;
+        for i in 0..N {
+            let buffer = make_frame(W, H, (i * 7) as u8);
+            match enc.encode_to_message(
+                EncodeInput::PixelBuffer(CVPixelBufferHandle(buffer)),
+                i as i64 * 33,
+            ) {
+                Ok(message) => packets += packets_of(&message).len(),
+                Err(_) => empty_calls += 1,
+            }
+            std::thread::sleep(std::time::Duration::from_millis(33));
+        }
+        assert!(packets > 0, "no packets at all");
+        assert!(
+            packets + 2 >= N,
+            "{N} frames submitted at 30 fps produced only {packets} packets ({empty_calls} calls \
+             without output); VideoToolbox keeps one frame in flight, not {diff}",
+            diff = N - packets
+        );
+    }
 }
+
