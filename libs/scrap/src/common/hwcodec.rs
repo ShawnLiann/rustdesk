@@ -960,5 +960,62 @@ mod pixbuf_encode_integration {
             diff = N - packets
         );
     }
+
+
+    /// Leak check, not a pass/fail CI test: allocates a fresh 1080p BGRA buffer per frame and
+    /// watches RSS. A wrapper that forgets to release one reference per frame leaks 8 MB a frame,
+    /// so a few hundred frames make it obvious.
+    ///
+    ///   cargo test -p scrap --features hwcodec rss -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn rss_stays_flat_over_a_thousand_frames() {
+        use std::process::Command;
+
+        fn rss_kb() -> u64 {
+            let pid = std::process::id().to_string();
+            let out = Command::new("ps")
+                .args(["-o", "rss=", "-p", &pid])
+                .output()
+                .expect("ps");
+            String::from_utf8_lossy(&out.stdout)
+                .trim()
+                .parse()
+                .unwrap_or(0)
+        }
+
+        const W: usize = 1920;
+        const H: usize = 1080;
+        const N: usize = 600;
+        const WARMUP: usize = 100;
+
+        let mut enc = encoder(W, H);
+        let start = rss_kb();
+        let mut baseline = start;
+        let mut samples = Vec::new();
+        for i in 0..N {
+            let buffer = make_frame(W, H, (i * 3) as u8);
+            let _ = enc.encode_to_message(
+                EncodeInput::PixelBuffer(CVPixelBufferHandle(buffer)),
+                i as i64 * 33,
+            );
+            if i + 1 == WARMUP {
+                baseline = rss_kb();
+            }
+            if (i + 1) % 100 == 0 {
+                let now = rss_kb();
+                samples.push((i + 1, now));
+                println!("frames {:4}  rss {:6} kB  (+{} kB since warm-up)", i + 1, now, now as i64 - baseline as i64);
+            }
+        }
+        let end = rss_kb();
+        let growth = end as i64 - baseline as i64;
+        println!("start {start} kB, warm-up {baseline} kB, end {end} kB, growth {growth} kB over {} frames", N - WARMUP);
+        assert!(
+            growth < 64 * 1024,
+            "RSS grew {} kB after warm-up: a released-per-frame wrapper should stay flat",
+            growth
+        );
+    }
 }
 
