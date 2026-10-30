@@ -205,7 +205,13 @@ impl Frame<'_> {
                         announce_pixbuf_once();
                         return Ok(EncodeInput::PixelBuffer(CVPixelBufferHandle(pb)));
                     }
-                    log::warn!("CVPixelBufferCreateWithIOSurface failed, falling back to yuv");
+                    // Frame-driven failure: throttle it, an unthrottled warn here would emit one
+                    // line per frame on a machine that cannot wrap the surface.
+                    hbb_common::throttled_log!(
+                        std::time::Duration::from_secs(30),
+                        warn,
+                        "CVPixelBufferCreateWithIOSurface failed, falling back to yuv"
+                    );
                 }
                 convert_to_yuv(&pixelbuffer, yuvfmt, yuv, mid_data)?;
                 Ok(EncodeInput::YUV(yuv))
