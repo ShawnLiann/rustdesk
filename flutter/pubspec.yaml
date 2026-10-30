@@ -93,7 +93,7 @@ dependencies:
   texture_rgba_renderer:
     git:
       url: https://github.com/ShawnLiann/flutter_texture_rgba_renderer
-      ref: 6c835b203e451811696dd74636c8bca0ee81ff0c
+      ref: fe1cca9bfd164ad39ccdac48290e6da50849ce48
   percent_indicator: ^4.2.2
   dropdown_button2: ^2.0.0
   flutter_gpu_texture_renderer:
