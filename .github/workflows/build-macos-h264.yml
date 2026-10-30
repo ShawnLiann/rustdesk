@@ -240,3 +240,8 @@ jobs:
       # PR's own CI, which is still waiting for workflow approval.
       - name: Frame-presentation unit tests
         run: cargo test -p scrap --features hwcodec --lib presentation_tests -- --nocapture
+
+      # Fork-only: the end-to-end check on a real VideoToolbox decoder, which the PR's own CI
+      # cannot run yet (its workflow runs need maintainer approval).
+      - name: Direct-path integration test (real decoder)
+        run: cargo test -p scrap --features hwcodec --lib surface_handoff_tests -- --nocapture
