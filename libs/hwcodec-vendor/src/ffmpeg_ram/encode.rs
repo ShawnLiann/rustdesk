@@ -57,6 +57,8 @@ pub struct Encoder {
     pub linesize: Vec<i32>,
     pub offset: Vec<i32>,
     pub length: i32,
+    #[cfg(target_os = "macos")]
+    vt: Option<crate::ffmpeg_ram::vt_pixbuf::VTEncoder>,
 }
 
 impl Encoder {
@@ -109,6 +111,8 @@ impl Encoder {
                 linesize,
                 offset,
                 length: length[0],
+                #[cfg(target_os = "macos")]
+                vt: None,
             })
         }
     }
@@ -125,6 +129,46 @@ impl Encoder {
             );
             if result != 0 {
                 return Err(result);
+            }
+            Ok(&mut *self.frames)
+        }
+    }
+
+    /// macOS only: submit a CVPixelBuffer (IOSurface-backed is the point) and get the encoded
+    /// packets back. Keeps its own VTCompressionSession, so it bypasses ffmpeg and the CPU-side
+    /// BGRA → NV12 conversion entirely. The buffer is tagged BT.601 by the C++ side when it carries
+    /// no matrix attachment, which is what keeps the image identical to the libyuv path.
+    #[cfg(target_os = "macos")]
+    pub fn encode_pixbuf(
+        &mut self,
+        cvpixelbuffer: *mut c_void,
+        ms: i64,
+    ) -> Result<&mut Vec<EncodeFrame>, i32> {
+        if self.vt.is_none() {
+            let format = Encoder::format_from_name(self.ctx.name.clone()).map_err(|_| -1)?;
+            self.vt = crate::ffmpeg_ram::vt_pixbuf::VTEncoder::new(
+                self.ctx.width,
+                self.ctx.height,
+                format,
+                self.ctx.fps,
+                self.ctx.kbs,
+                self.ctx.gop,
+            );
+            if self.vt.is_none() {
+                return Err(-2);
+            }
+        }
+        let vt = self.vt.as_ref().ok_or(-2)?;
+        let encoded = vt.encode(cvpixelbuffer, ms).map_err(|_| -3)?;
+        unsafe {
+            let frames = &mut *self.frames;
+            frames.clear();
+            for f in encoded {
+                frames.push(EncodeFrame {
+                    data: f.data,
+                    pts: f.pts,
+                    key: if f.key { 1 } else { 0 },
+                });
             }
             Ok(&mut *self.frames)
         }
