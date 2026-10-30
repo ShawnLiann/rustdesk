@@ -846,16 +846,17 @@ impl Decoder {
             // * not requested (every non-macOS build, and any session that did
             //   not opt in) -- decode straight into the images it returned, one
             //   allocation, exactly the path that existed before.
-            // * requested -- the surface has to be taken while no borrow of the
-            //   decoder is alive, so decode first and then read the images back
-            //   through `last_frame_images`; the extra Vec buys the hand-off.
+            // * requested -- one call hands back both halves of the same
+            //   transaction, so the surface is read first and the software frames
+            //   only if it did not appear.
             #[cfg(target_os = "macos")]
             let gpu_wanted = decoder.pixelbuffer_wanted();
             #[cfg(not(target_os = "macos"))]
             let gpu_wanted = false;
             if !gpu_wanted {
                 let mut software_ok = false;
-                for image in decoder.decode(&h264.data)? {
+                let out = decoder.decode(&h264.data)?;
+                for image in out.images() {
                     if image.to_fmt(rgb, i420).is_ok() {
                         software_ok = true;
                     }
@@ -866,11 +867,9 @@ impl Decoder {
                 ret = present_software(pixelbuffer, software_ok) || ret;
                 continue;
             }
-            #[cfg(target_os = "macos")]
-            decoder.decode(&h264.data)?;
+            let mut out = decoder.decode(&h264.data)?;
             // The GPU frame of this decode call, if the decoder delivered one.
-            #[cfg(target_os = "macos")]
-            if let Some(frame) = decoder.take_pixelbuffer() {
+            if let Some(frame) = out.take_pixelbuffer() {
                 // Metadata only: the recorder sizes its output from `ImageRgb`,
                 // and the software conversion that used to fill these in never
                 // runs on this path, so a recording would otherwise open at 0x0
@@ -882,7 +881,7 @@ impl Decoder {
                 continue;
             }
             let mut software_ok = false;
-            for image in decoder.last_frame_images() {
+            for image in out.images() {
                 // TODO: just process the last frame
                 if image.to_fmt(rgb, i420).is_ok() {
                     software_ok = true;
