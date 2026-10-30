@@ -1365,3 +1365,129 @@ mod presentation_tests {
         assert_eq!(presented(true, true), Presented::Surface);
     }
 }
+
+/// An end-to-end check of the direct path on a real decoder.
+///
+/// The unit tests above pin the rule the two software branches share. What they cannot show is
+/// that the wiring around a real `HwRamDecoder` obeys it -- which is what the review asked for.
+/// This drives a committed two-frame H.264 fixture through `handle_hwram_video_frame`:
+///
+/// * the first packet, with the direct path on, must hand over a surface and tell the recorder
+///   that surface's own size, without copying pixels into `ImageRgb`;
+/// * the second packet, with the direct path off, must present software pixels and must not
+///   leave the earlier surface in the slot -- otherwise the caller presents the older picture.
+///
+/// The fixture's provenance and the command that regenerates it are in
+/// `libs/scrap/tests/fixtures/README.md`.
+#[cfg(all(test, target_os = "macos", feature = "hwcodec"))]
+mod surface_handoff_tests {
+    use super::*;
+    use base::message_proto::EncodedVideoFrame;
+    use std::sync::atomic::Ordering;
+
+    const FIXTURE: &[u8] = include_bytes!("../../tests/fixtures/two_frames.h264");
+    const WIDTH: usize = 160;
+    const HEIGHT: usize = 96;
+
+    /// One packet per access unit: a new SPS starts the next frame in this fixture.
+    fn packets(data: &[u8]) -> Vec<Vec<u8>> {
+        let mut starts = vec![0usize];
+        let mut i = 0;
+        while i + 4 < data.len() {
+            if i > 0 && data[i..i + 4] == [0, 0, 0, 1] && data[i + 4] & 0x1f == 7 {
+                starts.push(i);
+                i += 4;
+            } else {
+                i += 1;
+            }
+        }
+        assert!(
+            starts.len() >= 2,
+            "the fixture must contain at least two access units, found {}",
+            starts.len()
+        );
+        starts.push(data.len());
+        (0..starts.len() - 1)
+            .map(|n| data[starts[n]..starts[n + 1]].to_vec())
+            .collect()
+    }
+
+    fn message(data: Vec<u8>) -> EncodedVideoFrames {
+        EncodedVideoFrames {
+            frames: vec![EncodedVideoFrame {
+                data: data.into(),
+                key: true,
+                ..Default::default()
+            }]
+            .into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_surface_is_handed_over_and_a_later_software_frame_evicts_it() {
+        let mut decoder = match HwRamDecoder::new(CodecFormat::H264) {
+            Ok(decoder) => decoder,
+            Err(err) => {
+                eprintln!("skipped: no hardware H.264 decoder on this host ({err})");
+                return;
+            }
+        };
+        let wanted = crate::gpu_frames_wanted_flag(true);
+        decoder.set_pixelbuffer_wanted(wanted.clone());
+
+        let packets = packets(FIXTURE);
+        let mut rgb = ImageRgb::new(crate::common::ImageFormat::ABGR, 4);
+        let mut i420 = Vec::new();
+        let mut slot: crate::PixelBufferOutput = None;
+
+        // Direct path on: a surface comes out, and the recorder learns its size even though no
+        // pixels were copied into `ImageRgb`.
+        let presented = Decoder::handle_hwram_video_frame(
+            &mut decoder,
+            &message(packets[0].clone()),
+            &mut rgb,
+            &mut i420,
+            &mut slot,
+        )
+        .expect("the first packet must decode");
+        assert!(presented, "the direct path must report a presented frame");
+        let Some(frame) = slot.as_ref() else {
+            eprintln!("skipped: this host's decoder did not hand out a surface");
+            return;
+        };
+        assert_eq!(
+            rgb.w,
+            frame.width() as usize,
+            "the recorder gets the surface's width"
+        );
+        assert_eq!(
+            rgb.h,
+            frame.height() as usize,
+            "the recorder gets the surface's height"
+        );
+        assert_eq!((rgb.w, rgb.h), (WIDTH, HEIGHT));
+        assert!(
+            rgb.raw.is_empty(),
+            "the direct path must not copy pixels into ImageRgb"
+        );
+
+        // Direct path off for the next packet: the software picture wins, and the surface from
+        // the earlier packet must not survive it.
+        wanted.store(false, Ordering::Relaxed);
+        let presented = Decoder::handle_hwram_video_frame(
+            &mut decoder,
+            &message(packets[1].clone()),
+            &mut rgb,
+            &mut i420,
+            &mut slot,
+        )
+        .expect("the second packet must decode");
+        assert!(presented, "the software path must present a picture");
+        assert!(
+            slot.is_none(),
+            "a later software picture must not leave an earlier surface in the slot"
+        );
+        assert!(!rgb.raw.is_empty(), "the software path must fill ImageRgb");
+    }
+}
