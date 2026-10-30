@@ -161,6 +161,14 @@ int main(int argc, char** argv) {
     double d1 = cpu_ms();
     dir.cpu_total += d1 - d0; dir.cpu_submit += d1 - d0;
 
+    // VideoToolbox is created with an expected rate of 30 fps and silently drops frames when it is
+    // fed faster, so an unpaced run measures the drop policy rather than the encoder. Set
+    // FRAME_DELAY_US=33333 to submit at the natural rate.
+    {
+      const char* delay = getenv("FRAME_DELAY_US");
+      if (delay) usleep((useconds_t)atoi(delay));
+    }
+
     if (f == frames / 2) { VTCompressionSessionCompleteFrames(s_nv12, kCMTimeInvalid);
                            VTCompressionSessionCompleteFrames(s_bgra, kCMTimeInvalid); }
   }
