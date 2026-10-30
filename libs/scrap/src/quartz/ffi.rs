@@ -239,3 +239,21 @@ extern "C" {
     pub fn CFRetain(cf: *const c_void);
     pub fn CFRelease(cf: *const c_void);
 }
+
+#[link(name = "CoreVideo", kind = "framework")]
+extern "C" {
+    pub fn CVPixelBufferCreateWithIOSurface(
+        allocator: CFAllocatorRef,
+        surface: IOSurfaceRef,
+        pixel_buffer_attributes: CFDictionaryRef,
+        pixel_buffer_out: *mut *mut c_void,
+    ) -> i32;
+    pub fn CVBufferSetAttachment(
+        buffer: *mut c_void,
+        key: CFStringRef,
+        value: *mut c_void,
+        attachment_mode: i32,
+    );
+    pub static kCVImageBufferYCbCrMatrixKey: CFStringRef;
+    pub static kCVImageBufferYCbCrMatrix_ITU_R_601_4: CFStringRef;
+}

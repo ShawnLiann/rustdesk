@@ -241,7 +241,6 @@ mod ffmpeg {
             ["ffmpeg_ram_encode.cpp", "ffmpeg_ram_decode.cpp"].map(|f| ffmpeg_ram_dir.join(f)),
         );
 
-        // macOS: encode entry that takes a CVPixelBuffer directly (no CPU copy, no libyuv).
         if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
             builder.file(manifest_dir.join("src").join("ffmpeg_ram").join("vt_pixbuf_encode.mm"));
             println!("cargo:rustc-link-lib=framework=VideoToolbox");

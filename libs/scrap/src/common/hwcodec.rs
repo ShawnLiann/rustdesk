@@ -114,10 +114,18 @@ impl EncoderApi for HwRamEncoder {
     fn encode_to_message(&mut self, input: EncodeInput, ms: i64) -> ResultType<VideoFrame> {
         let mut vf = VideoFrame::new();
         let mut frames = Vec::new();
-        for frame in self
-            .encode(input.yuv()?, ms)
-            .with_context(|| "Failed to encode")?
-        {
+        #[cfg(target_os = "macos")]
+        let encoded = match &input {
+            EncodeInput::PixelBuffer(h) => self
+                .encoder
+                .encode_pixbuf(h.0, ms)
+                .map(|v| v.clone())
+                .map_err(|code| anyhow!("encode_pixbuf failed: {code}")),
+            _ => self.encode(input.yuv()?, ms).map_err(|code| anyhow!("encode failed: {code}")),
+        };
+        #[cfg(not(target_os = "macos"))]
+        let encoded = self.encode(input.yuv()?, ms);
+        for frame in encoded.with_context(|| "Failed to encode")? {
             frames.push(EncodedVideoFrame {
                 data: Bytes::from(frame.data),
                 pts: frame.pts,
