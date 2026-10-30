@@ -244,15 +244,38 @@ fn announce_pixbuf_once() {
     });
 }
 
+/// The direct encode path changes what the encoder is fed, so it stays off unless the
+/// environment names it exactly. Anything else - unset, empty, "true", " 1" - is off.
+#[cfg(target_os = "macos")]
+fn parse_pixbuf_env(value: Option<&str>) -> bool {
+    matches!(value, Some("1"))
+}
+
 #[cfg(target_os = "macos")]
 fn encode_pixbuf_enabled() -> bool {
     use std::sync::OnceLock;
     static ENABLED: OnceLock<bool> = OnceLock::new();
     *ENABLED.get_or_init(|| {
-        std::env::var("RD_ENCODE_PIXBUF")
-            .map(|v| v == "1")
-            .unwrap_or(false)
+        parse_pixbuf_env(std::env::var("RD_ENCODE_PIXBUF").ok().as_deref())
     })
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod pixbuf_env_tests {
+    use super::parse_pixbuf_env;
+
+    #[test]
+    fn off_when_the_variable_is_absent() {
+        assert!(!parse_pixbuf_env(None));
+    }
+
+    #[test]
+    fn only_the_exact_value_one_enables_it() {
+        assert!(parse_pixbuf_env(Some("1")));
+        for value in ["0", "", "true", "yes", "2", " 1", "1 "] {
+            assert!(!parse_pixbuf_env(Some(value)), "{value:?} must not enable it");
+        }
+    }
 }
 
 pub enum EncodeInput<'a> {
