@@ -235,7 +235,6 @@ impl Drop for CVPixelBufferHandle {
 }
 
 #[cfg(target_os = "macos")]
-#[cfg(target_os = "macos")]
 fn announce_pixbuf_once() {
     use std::sync::OnceLock;
     static ONCE: OnceLock<()> = OnceLock::new();
@@ -273,7 +272,7 @@ mod pixbuf_env_tests {
     fn only_the_exact_value_one_enables_it() {
         assert!(parse_pixbuf_env(Some("1")));
         for value in ["0", "", "true", "yes", "2", " 1", "1 "] {
-            assert!(!parse_pixbuf_env(Some(value)), "{value:?} must not enable it");
+            assert!(!parse_pixbuf_env(Some(value)), "{:?} must not enable it", value);
         }
     }
 }
