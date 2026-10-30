@@ -4,14 +4,14 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - test/h264-macos
+      - alt/codec-latch-recovery
 
 env:
   MAC_RUST_VERSION: "1.81"
   FLUTTER_VERSION: "3.24.5"
   VCPKG_COMMIT_ID: "9e593bb18ea69cc5095e012465dcd675a822ed0d"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
-  VERSION: "1.5.0-h264flow"
+  VERSION: "1.5.0-latch-recovery"
 
 jobs:
   generate-bridge:
@@ -228,7 +228,7 @@ jobs:
           # green dmg says nothing about the tests. The filter is the module plus the test-name prefix: a
           # function name selects nothing and the step still passes with `running 0 tests`.
           cargo test --locked --features hwcodec,flutter,unix-file-copy-paste --lib \
-            client::io_loop::tests::gpu_refuse_streak_ -- --nocapture
+            client::decode_failure_tests:: -- --nocapture
 
       - name: Create unsigned dmg
         run: |
@@ -242,9 +242,3 @@ jobs:
           name: rustdesk-h264-x86_64
           path: rustdesk-${{ env.VERSION }}-x86_64.dmg
           retention-days: 14
-
-      # Fork-only step: a plain build never compiles `#[cfg(test)]`, so the unit
-      # tests added with the review fixes would otherwise only be compiled by the
-      # PR's own CI, which is still waiting for workflow approval.
-      - name: Frame-presentation unit tests
-        run: cargo test -p scrap --features hwcodec --lib presentation_tests -- --nocapture
