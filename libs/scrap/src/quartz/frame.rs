@@ -38,6 +38,34 @@ impl Frame {
         self.bgra_stride
     }
 
+    /// Wrap the captured IOSurface in a CVPixelBuffer without copying the pixels, and tag it with
+    /// the colour matrix the decoder side has always assumed. The caller owns one reference and
+    /// must CFRelease it.
+    pub fn create_cvpixelbuffer(&self) -> *mut std::ffi::c_void {
+        unsafe {
+            let mut pb: *mut std::ffi::c_void = ptr::null_mut();
+            if CVPixelBufferCreateWithIOSurface(
+                ptr::null_mut(),
+                self.surface,
+                ptr::null_mut(),
+                &mut pb,
+            ) != 0
+            {
+                return ptr::null_mut();
+            }
+            if !pb.is_null() {
+                // 1 == kCVAttachmentMode_ShouldPropagate
+                CVBufferSetAttachment(
+                    pb,
+                    kCVImageBufferYCbCrMatrixKey,
+                    kCVImageBufferYCbCrMatrix_ITU_R_601_4 as *mut _,
+                    1,
+                );
+            }
+            pb
+        }
+    }
+
     pub fn surface_to_bgra<'a>(&'a mut self, h: usize) {
         unsafe {
             let plane0 = IOSurfaceGetBaseAddressOfPlane(self.surface, 0);

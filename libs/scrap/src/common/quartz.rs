@@ -81,6 +81,13 @@ pub struct PixelBuffer<'a> {
     height: usize,
 }
 
+impl<'a> PixelBuffer<'a> {
+    /// CVPixelBufferRef wrapping the same IOSurface; caller owns one reference.
+    pub fn create_cvpixelbuffer(&self) -> *mut std::ffi::c_void {
+        self.frame.create_cvpixelbuffer()
+    }
+}
+
 impl<'a> crate::TraitPixelBuffer for PixelBuffer<'a> {
     fn data(&self) -> &[u8] {
         &*self.frame
