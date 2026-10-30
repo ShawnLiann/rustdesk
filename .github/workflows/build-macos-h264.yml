@@ -280,6 +280,12 @@ jobs:
             "$RUNNER_TEMP/libyuv-prefix/include/"
 
       - name: Verify the wrapper (encode, submit CPU, PSNR against libyuv)
+        env:
+          # Hosted runners have no AppleM2ScalerCSCDriver. On 41004862543 that showed up as
+          # HEVC keys=0 while still decoding, and current/direct at 51.27/48.17 dB where real
+          # hardware gives 47.23/47.59. Keep the absolute 40 dB floor here (a missing BT.601
+          # tag lands at ~27.6 dB anywhere) and the tight 1.5 dB comparison on hardware.
+          STRICT: "0"
         run: |
           set -euo pipefail
           LIBYUV_PREFIX="$RUNNER_TEMP/libyuv-prefix" \
