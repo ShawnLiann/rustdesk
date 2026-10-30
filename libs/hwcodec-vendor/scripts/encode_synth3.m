@@ -24,6 +24,37 @@ static double cpu_ms(void) {
 static int W = 1920, H = 1080;
 
 // deterministic, high-entropy-ish, but stable scene: colour bars + gradient + fine noise
+// Screen-like content: flat background, dense dark "text" rows, a solid panel and a hard diagonal.
+// Bars-and-noise is harder than anything a desktop shows, so it overstates how badly low bitrates do.
+static void fill_scene_text(uint8_t* p, int stride, int w, int h, int tick) {
+  const int row_h = h / 26 > 4 ? h / 26 : 4;
+  for (int y = 0; y < h; y++) {
+    uint8_t* row = p + y * stride;
+    for (int x = 0; x < w; x++) {
+      uint8_t v = 246;
+      int band = y / row_h;
+      int in_text = (y % row_h) > 2 && (y % row_h) < row_h - 2;
+      if (in_text && band < 22) {
+        // deterministic pseudo-glyphs: every 6 px a stroke, gaps to mimic word spacing
+        int cell = x / 7, phase = ((band * 37 + cell * 17) % 11);
+        if (phase < 6) v = 24;
+      }
+      if (x > w * 3 / 4 && y < h / 3) { v = 60; }                       // solid panel
+      if (x > w / 2 - 40 && x < w / 2 + 40 && abs(y - h / 2) < 3) v = 200;  // hard edge
+      if (tick >= 0 && x >= w - 40 && y >= 30 && y < 30 + 12) v = 210;      // small moving block
+      uint8_t* q = row + x * 4;
+      // Keep some colour in the scene: a pure grey test cannot exercise the chroma guard at all.
+      if (x > w * 3 / 4 && y < h / 3) {
+        q[0] = 170; q[1] = 90; q[2] = 40; q[3] = 255;        // panel, strongly blue in BGRA terms
+      } else if (in_text && band < 22 && (band % 5) == 0 && v < 128) {
+        q[0] = 40; q[1] = 40; q[2] = 190; q[3] = 255;        // every fifth text row is red
+      } else {
+        q[0] = v; q[1] = v; q[2] = v; q[3] = 255;
+      }
+    }
+  }
+}
+
 static void fill_scene(uint8_t* p, int stride, int w, int h, int tick) {
   for (int y = 0; y < h; y++) {
     uint8_t* row = p + y * stride;
@@ -39,6 +70,26 @@ static void fill_scene(uint8_t* p, int stride, int w, int h, int tick) {
       q[0] = b; q[1] = g; q[2] = r; q[3] = 255;
     }
   }
+}
+
+// One flat saturated colour: no edges, no filtering question. If the two arms disagree on a flat
+// colour, the matrices differ; if they agree exactly, any difference elsewhere is edge handling.
+static void fill_scene_flat(uint8_t* p, int stride, int w, int h, int tick) {
+  (void)tick;
+  for (int y = 0; y < h; y++) {
+    uint8_t* row = p + y * stride;
+    for (int x = 0; x < w; x++) {
+      uint8_t* q = row + x * 4;
+      q[0] = 170; q[1] = 90; q[2] = 40; q[3] = 255;
+    }
+  }
+}
+
+static void fill_any(uint8_t* p, int stride, int w, int h, int tick) {
+  const char* scene = getenv("SCENE");
+  if (scene && strcmp(scene, "text") == 0) fill_scene_text(p, stride, w, h, tick);
+  else if (scene && strcmp(scene, "flat") == 0) fill_scene_flat(p, stride, w, h, tick);
+  else fill_scene(p, stride, w, h, tick);
 }
 
 typedef struct {
@@ -109,7 +160,7 @@ int main(int argc, char** argv) {
   for (int f = 0; f < frames; f++) {
     if (f == 0) printf("loop start\n");
     CVPixelBufferLockBaseAddress(bgra, 0);
-    fill_scene((uint8_t*)CVPixelBufferGetBaseAddress(bgra), (int)stride, W, H, f);
+    fill_any((uint8_t*)CVPixelBufferGetBaseAddress(bgra), (int)stride, W, H, f);
     CVPixelBufferUnlockBaseAddress(bgra, 0);
     CMTime ts = CMTimeMake(f, 30);
 
@@ -205,7 +256,7 @@ int main(int argc, char** argv) {
     CMTime pts = CMSampleBufferGetPresentationTimeStamp(sb);
     int tick = (int)pts.value;
     CVPixelBufferLockBaseAddress(bgra, 0);
-    fill_scene((uint8_t*)CVPixelBufferGetBaseAddress(bgra), (int)stride, W, H, tick);
+    fill_any((uint8_t*)CVPixelBufferGetBaseAddress(bgra), (int)stride, W, H, tick);
     std::vector<uint8_t> ref_buf((size_t)W * H * 3 / 2);
     libyuv::ARGBToNV12((uint8_t*)CVPixelBufferGetBaseAddress(bgra), (int)stride, ref_buf.data(), W,
                        ref_buf.data() + (size_t)W * H, W, W, H);
