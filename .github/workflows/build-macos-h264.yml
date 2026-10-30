@@ -261,14 +261,27 @@ jobs:
           submodules: recursive
           persist-credentials: false
 
-      - name: Build and run the wrapper
+      - name: Build libyuv for the PSNR guard
         run: |
           set -euo pipefail
-          SRCDIR=libs/hwcodec-vendor/src/ffmpeg_ram
-          clang++ -fobjc-arc -O2 \
-            -framework VideoToolbox -framework CoreVideo -framework CoreMedia -framework Foundation \
-            "$SRCDIR/vt_pixbuf_encode.mm" "$SRCDIR/test_vt_pixbuf.m" \
-            -I"$SRCDIR" -o /tmp/vt_smoke
-          /tmp/vt_smoke 1920 1080 0
-          /tmp/vt_smoke 3840 2160 0
-          /tmp/vt_smoke 3840 2160 1
+          git init -q "$RUNNER_TEMP/libyuv"
+          git -C "$RUNNER_TEMP/libyuv" fetch -q --depth=1 \
+            https://chromium.googlesource.com/libyuv/libyuv \
+            8d440c181c1bdc884c2d2d6d23a773ae51d178a1
+          git -C "$RUNNER_TEMP/libyuv" checkout -q FETCH_HEAD
+          cmake -S "$RUNNER_TEMP/libyuv" -B "$RUNNER_TEMP/libyuv/build" \
+            -DCMAKE_BUILD_TYPE=Release -DJPEG=OFF -DBUILD_SHARED_LIBS=OFF -DUNIT_TEST=OFF
+          cmake --build "$RUNNER_TEMP/libyuv/build" -j"$(sysctl -n hw.ncpu)"
+          LIB=$(find "$RUNNER_TEMP/libyuv/build" -name libyuv.a -print -quit)
+          test -n "$LIB"
+          mkdir -p "$RUNNER_TEMP/libyuv-prefix/lib" "$RUNNER_TEMP/libyuv-prefix/include"
+          cp "$LIB" "$RUNNER_TEMP/libyuv-prefix/lib/"
+          cp -R "$RUNNER_TEMP/libyuv/include/libyuv.h" "$RUNNER_TEMP/libyuv/include/libyuv" \
+            "$RUNNER_TEMP/libyuv-prefix/include/"
+
+      - name: Verify the wrapper (encode, submit CPU, PSNR against libyuv)
+        run: |
+          set -euo pipefail
+          LIBYUV_PREFIX="$RUNNER_TEMP/libyuv-prefix" \
+            libs/hwcodec-vendor/scripts/verify-encode-zerocopy.sh \
+            libs/hwcodec-vendor/scripts/encode_synth3.m
