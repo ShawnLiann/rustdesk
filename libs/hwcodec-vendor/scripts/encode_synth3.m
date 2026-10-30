@@ -24,8 +24,7 @@ static double cpu_ms(void) {
 static int W = 1920, H = 1080;
 
 // deterministic, high-entropy-ish, but stable scene: colour bars + gradient + fine noise
-// Screen-like content: flat background, dense dark "text" rows, a solid panel and a hard diagonal.
-// Bars-and-noise is harder than anything a desktop shows, so it overstates how badly low bitrates do.
+// Screen-like content: text rows, a solid panel, a hard edge. Bars overstate how badly low bitrates do.
 static void fill_scene_text(uint8_t* p, int stride, int w, int h, int tick) {
   const int row_h = h / 26 > 4 ? h / 26 : 4;
   for (int y = 0; y < h; y++) {
@@ -43,7 +42,7 @@ static void fill_scene_text(uint8_t* p, int stride, int w, int h, int tick) {
       if (x > w / 2 - 40 && x < w / 2 + 40 && abs(y - h / 2) < 3) v = 200;  // hard edge
       if (tick >= 0 && x >= w - 40 && y >= 30 && y < 30 + 12) v = 210;      // small moving block
       uint8_t* q = row + x * 4;
-      // Keep some colour in the scene: a pure grey test cannot exercise the chroma guard at all.
+      // Colour, or the chroma guard has nothing to measure.
       if (x > w * 3 / 4 && y < h / 3) {
         q[0] = 170; q[1] = 90; q[2] = 40; q[3] = 255;        // panel, strongly blue in BGRA terms
       } else if (in_text && band < 22 && (band % 5) == 0 && v < 128) {
@@ -72,8 +71,7 @@ static void fill_scene(uint8_t* p, int stride, int w, int h, int tick) {
   }
 }
 
-// One flat saturated colour: no edges, no filtering question. If the two arms disagree on a flat
-// colour, the matrices differ; if they agree exactly, any difference elsewhere is edge handling.
+// No edges: a difference here means the matrices differ, not the filtering.
 static void fill_scene_flat(uint8_t* p, int stride, int w, int h, int tick) {
   (void)tick;
   for (int y = 0; y < h; y++) {
@@ -231,8 +229,7 @@ int main(int argc, char** argv) {
   printf("current  %.3f ms/frame  (copy %.3f + libyuv %.3f + submit %.3f)\n",
          cur.cpu_total / frames, cur.cpu_copy / frames, cur.cpu_conv / frames, cur.cpu_submit / frames);
   printf("direct   %.3f ms/frame  (submit %.3f)\n", dir.cpu_total / frames, dir.cpu_submit / frames);
-  // Parameter sets live in the format description, not in the sample data; dump them too, as Annex-B,
-  // so the colour tags in the SPS VUI can be parsed instead of assumed.
+  // Parameter sets live in the format description, so dump them separately as Annex-B.
   const char* dump_ps = getenv("DUMP");
   if (dump_ps) {
     for (int k = 0; k < 2; k++) {
@@ -257,8 +254,7 @@ int main(int argc, char** argv) {
     }
   }
 
-  // Dump the first packet of each arm on request, so the colour tags actually written into the
-  // bitstream can be parsed instead of assumed.
+  // First packet of each arm, on request.
   const char* dump = getenv("DUMP");
   if (dump) {
     char name[512];
@@ -313,8 +309,7 @@ int main(int argc, char** argv) {
         sum += v; if (v < mn) mn = v; if (v > mx) mx = v;
       }
     double u = 0, v2 = 0; int n = 0;
-    // Chroma error, not just chroma mean: the luma PSNR alone cannot see a BT.601-vs-BT.709 mistake,
-    // because the wrong matrix moves mostly the colour difference signals.
+    // Luma PSNR cannot see a matrix mistake; the error shows up on the colour planes.
     double se_u = 0, se_v = 0; int cn = 0;
     const uint8_t* ref_uv = ref_buf.data() + (size_t)W * H;
     if (CVPixelBufferGetPlaneCount(out) > 1) {

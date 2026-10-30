@@ -108,13 +108,7 @@ else
       if [ "$STRICT" = 1 ]; then
         awk -v c="$cur" -v d="$dir" 'BEGIN { exit (c - d < 1.5) ? 0 : 1 }' \
           || { echo "  FAIL direct path drifted more than 1.5 dB (missing BT.601 tag?)"; fail=1; }
-        # Luma alone cannot see a matrix mistake: with BT.709 attached the luma drops to ~27 dB but a
-        # harness that only checked luma against a loose floor could still pass on some content. The
-        # chroma planes are where the wrong matrix shows most clearly (~33/38 dB against ~43/46).
-        # Floors are for the default bars scene only: on text-like content with sharp colour edges the
-        # direct path legitimately sits near 34 dB on V, because VT downsamples chroma differently from
-        # libyuv at edges. A flat colour measures identical on both arms, so this is edge handling, not
-        # a matrix error.
+        # Bars scene only: text content legitimately sits near 34 dB on V (chroma siting, not a matrix bug).
         awk -v u="$du" -v v="$dv" 'BEGIN { exit (u >= 36 && v >= 40) ? 0 : 1 }' \
           || { echo "  FAIL chroma below 36/40 dB (direct U=$du V=$dv): colour matrix is wrong"; fail=1; }
       else

@@ -38,12 +38,9 @@ impl Frame {
         self.bgra_stride
     }
 
-    /// Wrap the captured IOSurface in a CVPixelBuffer without copying the pixels, and attach the
-    /// colour matrix the encoder should convert with. The attachment drives the BGRA -> YUV
-    /// conversion inside VideoToolbox; it is *not* copied into the bitstream. Verified on macOS 27:
-    /// the SPS of both encode paths carries no VUI at all, so what the peer sees is whatever matrix
-    /// its decoder assumes by default, exactly as before this change. The caller owns one reference
-    /// and must CFRelease it.
+    /// Wrap the surface without copying, with the matrix VideoToolbox should convert with. The
+    /// attachment is not written into the bitstream (no VUI in the SPS), so the peer still sees
+    /// whatever its decoder assumes. The caller owns one reference and must CFRelease it.
     pub fn create_cvpixelbuffer(&self) -> *mut std::ffi::c_void {
         unsafe {
             let mut pb: *mut std::ffi::c_void = ptr::null_mut();
