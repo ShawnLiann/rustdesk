@@ -17,7 +17,8 @@ SHOW=0
 [ "${1:-}" = "--show" ] && SHOW=1
 
 # Paths this branch may add or change on top of $REV. Keep in sync with VENDORING.md.
-MODIFIED="build.rs src/ffmpeg_ram/encode.rs src/ffmpeg_ram/mod.rs"
+MODIFIED="build.rs src/ffmpeg_ram/encode.rs src/ffmpeg_ram/mod.rs
+cpp/common/platform/mac/mac.mm cpp/ffmpeg_ram/ffmpeg_ram_encode.cpp"
 ADDED="scripts/check-vendor-provenance.sh scripts/verify-encode-zerocopy.sh scripts/encode_synth3.m
 src/ffmpeg_ram/test_vt_pixbuf.m src/ffmpeg_ram/vt_pixbuf.rs
 src/ffmpeg_ram/vt_pixbuf_encode.h src/ffmpeg_ram/vt_pixbuf_encode.mm"

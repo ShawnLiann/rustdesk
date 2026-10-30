@@ -9,13 +9,19 @@ measured by CI before the dependency PRs land. It is not a fork we intend to mai
 upstream base    https://github.com/ShawnLiann/hwcodec  branch pr/macos-pixelbuffer-v2
                  commit 94d44e6 ("declare the pixel-buffer callback type on every platform")
                  → paired with rustdesk-org/hwcodec#53 (decode-side CVPixelBuffer output)
-local deltas     - re-enable "h264_videotoolbox" in the codec list (upstream disables it with
-                   the comment "h264 encode failed too often, not AV_CODEC_CAP_HARDWARE")
+local deltas     - cpp/common/platform/mac/mac.mm: report a hardware h264 encoder so the candidate
+                   is offered at all. Local only — this is NOT part of the encode-side PR.
+                 - cpp/ffmpeg_ram/ffmpeg_ram_encode.cpp: treat AVERROR(EAGAIN) as "no packet this
+                   round" instead of an encode failure; the caller counts 3 consecutive failures
+                   and would otherwise disable the encoder during VideoToolbox's warm-up.
+                 - build.rs: compile the .mm on macOS, link VideoToolbox/CoreVideo/CoreMedia
                  - src/ffmpeg_ram/vt_pixbuf_encode.{h,mm}: VTCompressionSession wrapper that
-                   takes a BGRA CVPixelBuffer directly (BT.601 tagged) and returns packets
+                   takes a BGRA CVPixelBuffer directly (BT.601 tagged) and returns packets. It
+                   prepends SPS/PPS to keyframes and rewrites AVCC length prefixes to Annex-B —
+                   VideoToolbox keeps the parameter sets in the format description, so a packet
+                   without them is a keyframe no decoder can start from.
                  - src/ffmpeg_ram/vt_pixbuf.rs: Rust side of that wrapper
                  - src/ffmpeg_ram/encode.rs: `Encoder::encode_pixbuf`, `EncodeFrame: Clone`
-                 - build.rs: compile the .mm on macOS, link VideoToolbox/CoreVideo/CoreMedia
                  - scripts/verify-encode-zerocopy.sh, src/ffmpeg_ram/test_vt_pixbuf.m
 ```
 
@@ -51,6 +57,8 @@ $ libs/hwcodec-vendor/scripts/check-vendor-provenance.sh
 added      scripts/verify-encode-zerocopy.sh
 ...
 modified   build.rs
+modified   cpp/common/platform/mac/mac.mm
+modified   cpp/ffmpeg_ram/ffmpeg_ram_encode.cpp
 modified   src/ffmpeg_ram/encode.rs
 modified   src/ffmpeg_ram/mod.rs
 OK: vendor == 94d44e6 + the deltas listed in VENDORING.md
