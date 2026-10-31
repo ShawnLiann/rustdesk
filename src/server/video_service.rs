@@ -1315,7 +1315,18 @@ fn handle_one_frame(
             send_conn_ids = sp.send_video_frame(msg);
         }
         Err(e) => {
-            vpx_no_output = e.is::<scrap::VpxNoOutput>();
+            vpx_no_output = e.is::<scrap::VpxNoOutput>() || e.to_string() == "no valid frame";
+            // Hardware encoders with an output delay emit nothing on some calls; counting that as a
+            // strike disables the encoder right after it started. Bound it so a stuck encoder still
+            // gets switched away.
+            const MAX_EMPTY_OUTPUTS: usize = 90;
+            if vpx_no_output && encoder.is_hardware() && *encode_fail_counter < MAX_EMPTY_OUTPUTS {
+                *encode_fail_counter += 1;
+                return Ok(static_refresh::FrameEncodeResult {
+                    send_conn_ids,
+                    vpx_no_output: true,
+                });
+            }
             *encode_fail_counter += 1;
             // Encoding errors are not frequent except on Android
             if !cfg!(target_os = "android") {

@@ -133,6 +133,8 @@ pub enum EncodingUpdate {
 impl Encoder {
     pub fn new(config: EncoderCfg, i444: bool) -> ResultType<Encoder> {
         log::info!("new encoder: {config:?}, i444: {i444}");
+        #[cfg(feature = "hwcodec")]
+        HwCodecConfig::restore_ram_encoders_if_empty();
         match config {
             EncoderCfg::VPX(_) => Ok(Encoder {
                 codec: Box::new(VpxEncoder::new(config, i444)?),
@@ -310,6 +312,15 @@ impl Encoder {
             }
             PreferCodec::Auto => auto_codec,
         };
+        // Local: the peer's VideoToolbox decoder probe can flip to "cannot decode" seconds into a
+        // session while the hardware does decode the stream, which drags the host down to software.
+        if let Ok(forced) = std::env::var("RD_FORCE_CODEC") {
+            match forced.trim() {
+                "h264" => *format = CodecFormat::H264,
+                "h265" => *format = CodecFormat::H265,
+                _ => {}
+            }
+        }
         if decodings.len() > 0 {
             log::info!(
                 "usable: vp8={vp8_useable}, av1={av1_useable}, h264={h264_useable}, h265={h265_useable}",
