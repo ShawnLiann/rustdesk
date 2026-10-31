@@ -173,6 +173,11 @@ pub trait TraitPixelBuffer {
     fn stride(&self) -> Vec<usize>;
 
     fn pixfmt(&self) -> Pixfmt;
+
+    /// Cheap emptiness test: a surface-backed frame must not have to copy itself just to answer it.
+    fn is_empty(&self) -> bool {
+        self.data().is_empty()
+    }
 }
 
 #[cfg(not(any(target_os = "ios")))]
@@ -185,7 +190,7 @@ pub enum Frame<'a> {
 impl Frame<'_> {
     pub fn valid<'a>(&'a self) -> bool {
         match self {
-            Frame::PixelBuffer(pixelbuffer) => !pixelbuffer.data().is_empty(),
+            Frame::PixelBuffer(pixelbuffer) => !pixelbuffer.is_empty(),
             Frame::Texture((texture, _)) => !texture.is_null(),
         }
     }

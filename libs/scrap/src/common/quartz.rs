@@ -52,9 +52,8 @@ impl crate::TraitCapturer for Capturer {
                 mem::swap(&mut frame, &mut handle);
 
                 match frame {
-                    Some(mut frame) => {
+                    Some(frame) => {
                         crate::would_block_if_equal(&mut self.saved_raw_data, frame.inner())?;
-                        frame.surface_to_bgra(self.height());
                         Ok(Frame::PixelBuffer(PixelBuffer {
                             frame,
                             data: PhantomData,
@@ -90,7 +89,11 @@ impl<'a> PixelBuffer<'a> {
 
 impl<'a> crate::TraitPixelBuffer for PixelBuffer<'a> {
     fn data(&self) -> &[u8] {
-        &*self.frame
+        self.frame.bgra(self.height)
+    }
+
+    fn is_empty(&self) -> bool {
+        self.width == 0 || self.height == 0 || self.frame.stride() == 0
     }
 
     fn width(&self) -> usize {
