@@ -20,7 +20,7 @@ jobs:
   build-macos-arm64:
     name: macOS arm64 (h264 test)
     needs: [generate-bridge]
-    runs-on: macos-14
+    runs-on: macos-15
     # Build steps run dependency build scripts; keep the token read-only.
     permissions:
       contents: read
@@ -258,7 +258,7 @@ jobs:
   # VTCompressionSession, and fails if no packet comes back.
   encode-wrapper-smoke:
     name: macOS encode wrapper smoke test
-    runs-on: macos-14
+    runs-on: macos-15
     permissions:
       contents: read
     steps:
