@@ -686,6 +686,40 @@ impl HwCodecConfig {
         }
         crate::codec::Encoder::update(crate::codec::EncodingUpdate::Check);
     }
+
+    /// `clear()` empties the hardware encoder list for the rest of the process, so one failed
+    /// VideoToolbox session (a display reconfiguration kills it) leaves every later connection on
+    /// software encoding. Probe again when an encoder is requested and the list is empty.
+    pub fn restore_ram_encoders_if_empty() {
+        if !CONFIG
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|c| c.ram_encode.is_empty())
+            .unwrap_or(false)
+        {
+            return;
+        }
+        static LAST: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+        {
+            let mut last = LAST.lock().unwrap();
+            if last
+                .map(|t| t.elapsed() < std::time::Duration::from_secs(3))
+                .unwrap_or(false)
+            {
+                return;
+            }
+            *last = Some(std::time::Instant::now());
+        }
+        let json = check_available_hwcodec();
+        if let Ok(probed) = serde_json::from_str::<HwCodecConfig>(&json) {
+            let n = probed.ram_encode.len();
+            if let Some(cur) = CONFIG.lock().unwrap().as_mut() {
+                cur.ram_encode = probed.ram_encode;
+            }
+            log::info!("restored hwcodec config, ram encoders: {n}");
+        }
+    }
 }
 
 pub fn check_available_hwcodec() -> String {
