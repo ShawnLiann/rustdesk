@@ -295,6 +295,7 @@ jobs:
           STRICT: "0"
         run: |
           set -euo pipefail
-          LIBYUV_PREFIX="$RUNNER_TEMP/libyuv-prefix" \
-            libs/hwcodec-vendor/scripts/verify-encode-zerocopy.sh \
-            libs/hwcodec-vendor/scripts/encode_synth3.m
+          export LIBYUV_PREFIX="$RUNNER_TEMP/libyuv-prefix"
+          # The wrapper lives in the hwcodec rev Cargo.toml pins, which this job never builds.
+          export HWCODEC_ROOT=$(scripts/hwcodec-encode-check/resolve-hwcodec-root.sh --fetch)
+          scripts/hwcodec-encode-check/verify-encode-zerocopy.sh
