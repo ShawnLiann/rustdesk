@@ -714,6 +714,11 @@ fn run(vs: VideoService) -> ResultType<()> {
 
     let start = time::Instant::now();
     let mut last_check_displays = time::Instant::now();
+    // Reports how often the compositor itself said "nothing changed" against how often our own
+    // byte compare dropped a frame — the two dedupes are separate, and only this ratio says
+    // whether the byte compare still pays for its per-frame surface copy.
+    #[cfg(target_os = "macos")]
+    let mut last_dedupe_report = (time::Instant::now(), [0u64; 4]);
     #[cfg(windows)]
     let mut try_gdi = 1;
     #[cfg(windows)]
@@ -1003,6 +1008,39 @@ fn run(vs: VideoService) -> ResultType<()> {
                 {
                     would_block_count = 0;
                 }
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            use std::sync::atomic::Ordering;
+            if last_dedupe_report.0.elapsed().as_secs() >= 5 {
+                let now_counts = [
+                    scrap::quartz::stats::FRAME_COMPLETE.load(Ordering::Relaxed),
+                    scrap::quartz::stats::FRAME_IDLE.load(Ordering::Relaxed),
+                    scrap::quartz::stats::DEDUPE_CHECKED.load(Ordering::Relaxed),
+                    scrap::quartz::stats::DEDUPE_BLOCKED.load(Ordering::Relaxed),
+                ];
+                let secs = last_dedupe_report.0.elapsed().as_secs_f64().max(0.001);
+                let d: Vec<u64> = now_counts
+                    .iter()
+                    .zip(last_dedupe_report.1.iter())
+                    .map(|(a, b)| a - b)
+                    .collect();
+                last_dedupe_report = (time::Instant::now(), now_counts);
+                let pct = if d[2] > 0 {
+                    100.0 * d[3] as f64 / d[2] as f64
+                } else {
+                    0.0
+                };
+                log::info!(
+                    "[DEDUPE] {:.1}s: compositor complete={} idle={} byte-compare checked={} blocked={} ({pct:.1}% of checked)",
+                    secs,
+                    d[0],
+                    d[1],
+                    d[2],
+                    d[3]
+                );
             }
         }
 

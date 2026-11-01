@@ -53,7 +53,13 @@ impl crate::TraitCapturer for Capturer {
 
                 match frame {
                     Some(frame) => {
-                        crate::would_block_if_equal(&mut self.saved_raw_data, frame.inner())?;
+                        quartz::stats::bump(&quartz::stats::DEDUPE_CHECKED);
+                        if crate::would_block_if_equal(&mut self.saved_raw_data, frame.inner())
+                            .is_err()
+                        {
+                            quartz::stats::bump(&quartz::stats::DEDUPE_BLOCKED);
+                            return Err(io::ErrorKind::WouldBlock.into());
+                        }
                         Ok(Frame::PixelBuffer(PixelBuffer {
                             frame,
                             data: PhantomData,

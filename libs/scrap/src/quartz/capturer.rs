@@ -39,7 +39,11 @@ impl Capturer {
                 return;
             }
             if status == FrameComplete {
+                super::stats::bump(&super::stats::FRAME_COMPLETE);
                 handler(unsafe { Frame::new(surface) });
+            } else if status == FrameIdle {
+                // The compositor saw no change, so it never handed us a surface.
+                super::stats::bump(&super::stats::FRAME_IDLE);
             }
         })
         .copy();
