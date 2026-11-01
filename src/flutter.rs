@@ -301,6 +301,12 @@ pub struct FlutterHandler {
     /// established renderer support keeps getting software frames.
     #[cfg(all(target_os = "macos", feature = "hwcodec"))]
     gpu_frames_wanted: Arc<AtomicBool>,
+    /// Set when the render path refused the whole streak limit in a row and the
+    /// session went back to software frames. Cleared only by a new connection:
+    /// recomputing it from the renderers alone re-opens the direct path on the
+    /// next texture rebuild, and the session demotes again after another streak.
+    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+    gpu_frames_demoted: Arc<AtomicBool>,
 }
 
 impl Default for FlutterHandler {
@@ -314,6 +320,8 @@ impl Default for FlutterHandler {
             ),
             #[cfg(all(target_os = "macos", feature = "hwcodec"))]
             gpu_frames_wanted: Arc::new(AtomicBool::new(false)),
+            #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+            gpu_frames_demoted: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -898,13 +906,29 @@ impl FlutterHandler {
             .unwrap()
             .values()
             .any(|h| h.renderer.pixelbuffer_supported());
-        let wanted = *VT_ZEROCOPY_ENABLED
-            && self.use_texture_render.load(Ordering::Relaxed)
-            && supported;
+        let wanted = gpu_frames_wanted_now(
+            *VT_ZEROCOPY_ENABLED,
+            self.use_texture_render.load(Ordering::Relaxed),
+            supported,
+            self.gpu_frames_demoted.load(Ordering::Relaxed),
+        );
         // Only this session's decoder reads it; the switch is ours alone.
         self.gpu_frames_wanted.store(wanted, Ordering::Relaxed);
         log::info!("display: gpu frames wanted = {wanted}");
     }
+}
+
+/// The single place the four conditions that let this decoder hand out GPU
+/// frames are combined. `demoted` is the latch: once a session has fallen back
+/// it stays back until a new connection, however often the renderers are rebuilt.
+#[cfg(all(target_os = "macos", feature = "hwcodec"))]
+fn gpu_frames_wanted_now(
+    enabled: bool,
+    use_texture_render: bool,
+    presentable: bool,
+    demoted: bool,
+) -> bool {
+    enabled && use_texture_render && presentable && !demoted
 }
 
 impl InvokeUiSession for FlutterHandler {
@@ -915,6 +939,7 @@ impl InvokeUiSession for FlutterHandler {
 
     #[cfg(all(target_os = "macos", feature = "hwcodec"))]
     fn disable_gpu_frames(&self) {
+        self.gpu_frames_demoted.store(true, Ordering::Relaxed);
         // The render path refused too many GPU frames in a row, and the decoder
         // already skipped the software transfer for each of them: switch this
         // session back to software frames instead of leaving a frozen picture.
@@ -1720,7 +1745,13 @@ pub fn session_start_(
             // The decoder must agree with this renderer before the first frame,
             // otherwise it hands out GPU frames nobody presents and the picture
             // stalls without software pixels to fall back to.
+            // A new connection starts clean: one demotion must not outlive the
+            // session that earned it.
             #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+            session
+                .ui_handler
+                .gpu_frames_demoted
+                .store(false, Ordering::Relaxed);
             session.ui_handler.sync_gpu_frames_wanted();
             log::info!(
                 "Session {} start, use texture render: {}, vt zero-copy: {}",
@@ -2769,5 +2800,27 @@ mod tests {
     fn either_dimension_alone_is_enough_to_refuse() {
         assert!(!pixelbuffer_fits_session((2944, 1656), 2944, 1657));
         assert!(!pixelbuffer_fits_session((2944, 1656), 2943, 1656));
+    }
+}
+
+#[cfg(all(test, target_os = "macos", feature = "hwcodec"))]
+mod gpu_frames_wanted_tests {
+    use super::gpu_frames_wanted_now;
+
+    #[test]
+    fn demoted_stays_off_when_the_renderers_come_back() {
+        assert!(!gpu_frames_wanted_now(true, true, true, true));
+    }
+
+    #[test]
+    fn rearmed_connection_asks_for_gpu_frames_again() {
+        assert!(gpu_frames_wanted_now(true, true, true, false));
+    }
+
+    #[test]
+    fn gate_and_renderer_support_still_decide_when_not_demoted() {
+        assert!(!gpu_frames_wanted_now(false, true, true, false));
+        assert!(!gpu_frames_wanted_now(true, false, true, false));
+        assert!(!gpu_frames_wanted_now(true, true, false, false));
     }
 }
