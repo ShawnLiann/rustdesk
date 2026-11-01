@@ -72,13 +72,18 @@ impl Frame {
     /// the read-only lock that new() already holds.
     pub fn bgra(&self, h: usize) -> &[u8] {
         self.bgra.get_or_init(|| {
-            let mut v = vec![0u8; self.bgra_stride * h];
+            let len = self.bgra_stride * h;
+            // Copy into uninitialised memory: `vec![0u8; len]` memsets the whole 37 MB frame just
+            // to overwrite every byte on the next line, and `sample` shows that memset (bzero) as
+            // a per-frame cost on the 4K path.
+            let mut v: Vec<u8> = Vec::with_capacity(len);
             unsafe {
                 ptr::copy_nonoverlapping(
                     IOSurfaceGetBaseAddressOfPlane(self.surface, 0) as *const u8,
                     v.as_mut_ptr(),
-                    v.len(),
+                    len,
                 );
+                v.set_len(len);
             }
             v
         })
