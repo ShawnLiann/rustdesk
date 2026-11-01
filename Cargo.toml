@@ -294,4 +294,4 @@ rpath = true
 debug = 1
 
 [patch."https://github.com/rustdesk-org/hwcodec"]
-hwcodec = { git = "https://github.com/ShawnLiann/hwcodec", rev = "9663447f0ced444c188752829c7450b3f6daccd3" }
+hwcodec = { git = "https://github.com/ShawnLiann/hwcodec", rev = "2b04b68a3ba8eb91fa672553027d9bb10d83a9b2" }
