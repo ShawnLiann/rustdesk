@@ -70,12 +70,13 @@ impl Frame {
         unsafe {
             let plane0 = IOSurfaceGetBaseAddressOfPlane(self.surface, 0);
             self.bgra_stride = IOSurfaceGetBytesPerRowOfPlane(self.surface, 0);
-            self.bgra.resize(self.bgra_stride * h, 0);
-            std::ptr::copy_nonoverlapping(
-                plane0 as _,
-                self.bgra.as_mut_ptr(),
-                self.bgra_stride * h,
-            );
+            let len = self.bgra_stride * h;
+            // Copy into uninitialised memory: `resize(len, 0)` memsets the whole 4K frame (~37 MB)
+            // and the very next line overwrites every byte.
+            self.bgra.clear();
+            self.bgra.reserve(len);
+            std::ptr::copy_nonoverlapping(plane0 as _, self.bgra.as_mut_ptr(), len);
+            self.bgra.set_len(len);
         }
     }
 }
