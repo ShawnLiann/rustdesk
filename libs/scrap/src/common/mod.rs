@@ -263,12 +263,6 @@ mod pixbuf_stats {
     }
 }
 
-/// Wrap the captured surface as a `CVPixelBuffer` when that works, otherwise convert to YUV.
-///
-/// The two halves are arguments so that the fallback can be tested without an IOSurface the system
-/// refuses to wrap: a regression that returns early on a null handle would drop every frame while
-/// every other test still passed, which is the failure this signature exists to make visible.
-#[cfg(target_os = "macos")]
 /// A software encoder takes a yuv slice and fails on a pixel buffer, so only the VideoToolbox
 /// codecs may be handed one.
 #[cfg(target_os = "macos")]
@@ -279,6 +273,12 @@ fn wraps_video_toolbox_codec() -> bool {
     )
 }
 
+/// Wrap the captured surface as a `CVPixelBuffer` when that works, otherwise convert to YUV.
+///
+/// The two halves are arguments so that the fallback can be tested without an IOSurface the system
+/// refuses to wrap: a regression that returns early on a null handle would drop every frame while
+/// every other test still passed, which is the failure this signature exists to make visible.
+#[cfg(target_os = "macos")]
 fn pixbuf_or_yuv<'a>(
     enabled: bool,
     wrap: impl FnOnce() -> *mut std::ffi::c_void,
