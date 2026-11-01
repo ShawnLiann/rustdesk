@@ -1,11 +1,11 @@
-use std::{ops, ptr, slice};
+use std::{cell::OnceCell, ptr, slice};
 
 use super::ffi::*;
 
 pub struct Frame {
     surface: IOSurfaceRef,
     inner: &'static [u8],
-    bgra: Vec<u8>,
+    bgra: OnceCell<Vec<u8>>,
     bgra_stride: usize,
 }
 
@@ -24,8 +24,8 @@ impl Frame {
         Frame {
             surface,
             inner,
-            bgra: Vec::new(),
-            bgra_stride: 0,
+            bgra: OnceCell::new(),
+            bgra_stride: IOSurfaceGetBytesPerRowOfPlane(surface, 0),
         }
     }
 
@@ -66,24 +66,22 @@ impl Frame {
         }
     }
 
-    pub fn surface_to_bgra<'a>(&'a mut self, h: usize) {
-        unsafe {
-            let plane0 = IOSurfaceGetBaseAddressOfPlane(self.surface, 0);
-            self.bgra_stride = IOSurfaceGetBytesPerRowOfPlane(self.surface, 0);
-            self.bgra.resize(self.bgra_stride * h, 0);
-            std::ptr::copy_nonoverlapping(
-                plane0 as _,
-                self.bgra.as_mut_ptr(),
-                self.bgra_stride * h,
-            );
-        }
-    }
-}
-
-impl ops::Deref for Frame {
-    type Target = [u8];
-    fn deref<'a>(&'a self) -> &'a [u8] {
-        &self.bgra
+    /// Materialise the BGRA copy on first use. The zero-copy path hands the surface to
+    /// VideoToolbox and never reads the pixels, so a frame that only takes that path must not
+    /// pay for a full surface copy. The yuv conversion and screenshots pay for it here, under
+    /// the read-only lock that new() already holds.
+    pub fn bgra(&self, h: usize) -> &[u8] {
+        self.bgra.get_or_init(|| {
+            let mut v = vec![0u8; self.bgra_stride * h];
+            unsafe {
+                ptr::copy_nonoverlapping(
+                    IOSurfaceGetBaseAddressOfPlane(self.surface, 0) as *const u8,
+                    v.as_mut_ptr(),
+                    v.len(),
+                );
+            }
+            v
+        })
     }
 }
 

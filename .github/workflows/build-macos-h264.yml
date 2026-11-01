@@ -20,7 +20,11 @@ jobs:
   build-macos-arm64:
     name: macOS arm64 (h264 test)
     needs: [generate-bridge]
+<<<<<<< HEAD
     runs-on: macos-15
+=======
+    runs-on: macos-14
+>>>>>>> ca27f8c1941dac45beecd546710c121a6e5e134c
     # Build steps run dependency build scripts; keep the token read-only.
     permissions:
       contents: read
@@ -258,7 +262,11 @@ jobs:
   # VTCompressionSession, and fails if no packet comes back.
   encode-wrapper-smoke:
     name: macOS encode wrapper smoke test
+<<<<<<< HEAD
     runs-on: macos-15
+=======
+    runs-on: macos-14
+>>>>>>> ca27f8c1941dac45beecd546710c121a6e5e134c
     permissions:
       contents: read
     steps:
@@ -295,7 +303,13 @@ jobs:
           STRICT: "0"
         run: |
           set -euo pipefail
+<<<<<<< HEAD
           export LIBYUV_PREFIX="$RUNNER_TEMP/libyuv-prefix"
           # The wrapper lives in the hwcodec rev Cargo.toml pins, which this job never builds.
           export HWCODEC_ROOT=$(scripts/hwcodec-encode-check/resolve-hwcodec-root.sh --fetch)
           scripts/hwcodec-encode-check/verify-encode-zerocopy.sh
+=======
+          LIBYUV_PREFIX="$RUNNER_TEMP/libyuv-prefix" \
+            libs/hwcodec-vendor/scripts/verify-encode-zerocopy.sh \
+            libs/hwcodec-vendor/scripts/encode_synth3.m
+>>>>>>> ca27f8c1941dac45beecd546710c121a6e5e134c
