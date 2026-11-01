@@ -921,7 +921,10 @@ impl FlutterHandler {
 /// The single place the four conditions that let this decoder hand out GPU
 /// frames are combined. `demoted` is the latch: once a session has fallen back
 /// it stays back until a new connection, however often the renderers are rebuilt.
-#[cfg(all(target_os = "macos", feature = "hwcodec"))]
+///
+/// Arithmetic only, so `test` builds keep it and its tests on every platform, not
+/// only where the call site is compiled (`AGENTS.md`).
+#[cfg(any(all(target_os = "macos", feature = "hwcodec"), test))]
 fn gpu_frames_wanted_now(
     enabled: bool,
     use_texture_render: bool,
@@ -2803,7 +2806,7 @@ mod tests {
     }
 }
 
-#[cfg(all(test, target_os = "macos", feature = "hwcodec"))]
+#[cfg(test)]
 mod gpu_frames_wanted_tests {
     use super::gpu_frames_wanted_now;
 
