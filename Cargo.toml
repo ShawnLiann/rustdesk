@@ -294,4 +294,6 @@ rpath = true
 debug = 1
 
 [patch."https://github.com/rustdesk-org/hwcodec"]
-hwcodec = { git = "https://github.com/ShawnLiann/hwcodec", rev = "28e553ef72918eccbe11ca1f343cb3bf71e5fa53" }
+# TEMPORARY host build: EAGAIN-as-flow-control + the VideoToolbox h264 unlock, so a 4K macOS host
+# can actually encode. Local measurement build only - both deltas are local, revert before proposing.
+hwcodec = { git = "https://github.com/ShawnLiann/hwcodec", rev = "ff118bf6b684d559b205512b9eddf2d5e34d0f38" }
