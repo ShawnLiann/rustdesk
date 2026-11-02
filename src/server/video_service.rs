@@ -732,6 +732,11 @@ fn run(vs: VideoService) -> ResultType<()> {
     let mut mid_data = Vec::new();
     let mut repeat_encode_counter = 0;
     let repeat_encode_max = 10;
+    // The pixel-buffer path never fills `yuv`, so the repeat-encode arm below would have nothing to
+    // re-encode. Hold one extra reference on the last buffer instead of its pixels - exactly one:
+    // each new frame replaces it, so the capture pool never has more than one surface pinned.
+    #[cfg(target_os = "macos")]
+    let mut last_pixbuf: Option<scrap::CVPixelBufferHandle> = None;
     let mut encode_fail_counter = 0;
     let mut first_frame = true;
     // Set once the encoder emits its first packet; until then it may legitimately return nothing.
@@ -872,6 +877,10 @@ fn run(vs: VideoService) -> ResultType<()> {
                     }
 
                     let frame = frame.to(encoder.yuvfmt(), &mut yuv, &mut mid_data)?;
+                    #[cfg(target_os = "macos")]
+                    if let EncodeInput::PixelBuffer(h) = &frame {
+                        last_pixbuf = Some(h.retained());
+                    }
                     static_refresh.on_frame(&frame);
                     let result = handle_one_frame(
                         display_idx,
@@ -935,28 +944,57 @@ fn run(vs: VideoService) -> ResultType<()> {
                         }
                     }
                 }
-                if !encoder.latency_free() && yuv.len() > 0 {
-                    // yun.len() > 0 means the frame is not texture.
-                    if repeat_encode_counter < repeat_encode_max {
-                        repeat_encode_counter += 1;
-                        let send_conn_ids = handle_one_frame(
-                            display_idx,
-                            &sp,
-                            EncodeInput::YUV(&yuv),
-                            ms,
-                            &mut encoder,
-                            recorder.clone(),
-                            &mut encode_fail_counter,
-                            &mut first_frame,
-                            &mut encoder_warmed_up,
-                            capture_width,
-                            capture_height,
-                        )?
-                        .send_conn_ids;
-                        static_refresh.on_encoded(!send_conn_ids.is_empty());
-                        frame_controller.set_send(now, send_conn_ids);
-                        send_counter += 1;
+                // yuv.len() > 0 means the frame is not texture.
+                let repeat_input = if repeat_encode_allowed(
+                    encoder.latency_free(),
+                    yuv.len() > 0,
+                    repeat_encode_counter,
+                    repeat_encode_max,
+                ) {
+                    Some(EncodeInput::YUV(&yuv))
+                } else {
+                    #[cfg(target_os = "macos")]
+                    {
+                        // The pixel-buffer path has no yuv slice, so repeat the last buffer instead.
+                        // `retained()` bumps a reference count; no pixels are copied.
+                        match &last_pixbuf {
+                            Some(h)
+                                if repeat_encode_allowed(
+                                    encoder.latency_free(),
+                                    true,
+                                    repeat_encode_counter,
+                                    repeat_encode_max,
+                                ) =>
+                            {
+                                Some(EncodeInput::PixelBuffer(h.retained()))
+                            }
+                            _ => None,
+                        }
                     }
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        None
+                    }
+                };
+                if let Some(input) = repeat_input {
+                    repeat_encode_counter += 1;
+                    let send_conn_ids = handle_one_frame(
+                        display_idx,
+                        &sp,
+                        input,
+                        ms,
+                        &mut encoder,
+                        recorder.clone(),
+                        &mut encode_fail_counter,
+                        &mut first_frame,
+                        &mut encoder_warmed_up,
+                        capture_width,
+                        capture_height,
+                    )?
+                    .send_conn_ids;
+                    static_refresh.on_encoded(!send_conn_ids.is_empty());
+                    frame_controller.set_send(now, send_conn_ids);
+                    send_counter += 1;
                 }
                 static_refresh.try_encode(
                     &yuv,
@@ -1305,6 +1343,16 @@ fn check_privacy_mode_changed(
     Ok(())
 }
 
+/// Whether the `WouldBlock` arm may re-encode the previous frame.
+///
+/// Kept pure so the rule is testable without an encoder or a surface: a latency-free encoder must
+/// not repeat (its output is already paced), there has to be something to repeat, and the repeat is
+/// capped so a stalled peer cannot pin the encoder forever.
+#[inline]
+fn repeat_encode_allowed(latency_free: bool, have_input: bool, counter: usize, max: usize) -> bool {
+    !latency_free && have_input && counter < max
+}
+
 #[inline]
 fn refresh_allowed(unfed: bool, warmed_up: bool, latency_free: bool) -> bool {
     // Only VideoToolbox has been seen to need this; other platforms keep refreshing as before.
@@ -1624,7 +1672,19 @@ fn handle_screenshot(screenshot: Screenshot, msg: String, w: usize, h: usize, da
 
 #[cfg(test)]
 mod tests {
-    use super::refresh_allowed;
+    use super::{refresh_allowed, repeat_encode_allowed};
+
+    #[test]
+    fn repeat_encode_needs_input_and_room() {
+        // A latency-free encoder is already paced by the pipeline; repeating on top only burns CPU.
+        assert!(!repeat_encode_allowed(true, true, 0, 10));
+        // Nothing to repeat.
+        assert!(!repeat_encode_allowed(false, false, 0, 10));
+        // The cap bounds how long a stalled peer can pin the encoder.
+        assert!(repeat_encode_allowed(false, true, 0, 10));
+        assert!(repeat_encode_allowed(false, true, 9, 10));
+        assert!(!repeat_encode_allowed(false, true, 10, 10));
+    }
 
     #[test]
     fn refresh_waits_for_hw_encoder_warmup() {

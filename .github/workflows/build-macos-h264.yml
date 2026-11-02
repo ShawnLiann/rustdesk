@@ -223,6 +223,12 @@ jobs:
           cargo update -p hwcodec
           grep -A3 'name = "hwcodec"' Cargo.lock | head -8
 
+      # The repeat-encode rule is pure logic, but the app crate compiles no #[cfg(test)] code in a
+      # dmg build, so without this step a green run would say nothing about the test below.
+      - name: Test the repeat-encode rule
+        run: |
+          cargo test --locked --features hwcodec,flutter,unix-file-copy-paste --lib server::video_service::tests:: -- --nocapture
+
       - name: Build rustdesk
         run: |
           MIN_MACOS_VERSION="12.3"

@@ -234,6 +234,20 @@ impl Drop for CVPixelBufferHandle {
 }
 
 #[cfg(target_os = "macos")]
+impl CVPixelBufferHandle {
+    /// Take one more reference on the same buffer so it can be encoded again later.
+    ///
+    /// A reference count bump, not a copy: this is what lets the pixel-buffer path re-encode the
+    /// previous frame without keeping its pixels in RAM.
+    pub fn retained(&self) -> Self {
+        if !self.0.is_null() {
+            unsafe { crate::quartz::ffi::CFRetain(self.0 as *const c_void) };
+        }
+        Self(self.0)
+    }
+}
+
+#[cfg(target_os = "macos")]
 fn announce_pixbuf_once() {
     use std::sync::OnceLock;
     static ONCE: OnceLock<()> = OnceLock::new();
