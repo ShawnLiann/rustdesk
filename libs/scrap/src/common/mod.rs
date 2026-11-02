@@ -387,7 +387,7 @@ pub fn load_log_enabled() -> bool {
 /// `RD_NO_REPEAT=1` stops the WouldBlock arm from re-encoding the previous frame, so both the cost
 /// of the static-screen repeat and the peer's staleness without it can be priced in one build.
 fn parse_no_repeat_env(value: Option<&str>) -> bool {
-    matches!(value.map(str::trim), Some("1"))
+    matches!(value, Some("1"))
 }
 
 pub fn no_repeat_enabled() -> bool {
