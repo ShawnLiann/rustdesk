@@ -322,7 +322,10 @@ jobs:
   # VTCompressionSession, and fails if no packet comes back.
   encode-wrapper-smoke:
     name: macOS encode wrapper smoke test
-    runs-on: macos-15
+    # macos-15 is the arm64 pool, which this account's runs keep losing to capacity cancels
+    # (both arm64 jobs on 41431698285 were cancelled 15 min after queueing, never got a runner).
+    # The point of this job is a 2-minute early warning, so it has to be on a pool that runs.
+    runs-on: macos-15-intel
     permissions:
       contents: read
     steps:
