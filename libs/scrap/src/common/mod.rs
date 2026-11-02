@@ -396,6 +396,21 @@ pub fn no_repeat_enabled() -> bool {
     *ENABLED.get_or_init(|| parse_no_repeat_env(std::env::var("RD_NO_REPEAT").ok().as_deref()))
 }
 
+/// `RD_LOG_SPLIT=1` adds `enc=` / `send=` / `qos_fps=` to the per-frame budget line, splitting the
+/// one `encode=` bucket so a slow frame can be blamed on VideoToolbox or on the send. The counters
+/// are always accumulated; only the line changes.
+#[cfg(target_os = "macos")]
+fn parse_log_split_env(value: Option<&str>) -> bool {
+    matches!(value, Some("1"))
+}
+
+#[cfg(target_os = "macos")]
+pub fn log_split_enabled() -> bool {
+    use std::sync::OnceLock;
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| parse_log_split_env(std::env::var("RD_LOG_SPLIT").ok().as_deref()))
+}
+
 #[cfg(all(test, target_os = "macos"))]
 mod switch_env_tests {
     use super::{parse_lazy_bgra_env, parse_load_log_env, parse_no_repeat_env};
@@ -428,6 +443,18 @@ mod switch_env_tests {
             assert!(
                 !parse_no_repeat_env(Some(value)),
                 "{value:?} must not disable the repeat"
+            );
+        }
+    }
+
+    #[test]
+    fn log_split_only_the_exact_value_one_enables_it() {
+        assert!(!super::parse_log_split_env(None));
+        assert!(super::parse_log_split_env(Some("1")));
+        for value in ["0", "", "true", "on", " 1"] {
+            assert!(
+                !super::parse_log_split_env(Some(value)),
+                "{value:?} must not split the line"
             );
         }
     }

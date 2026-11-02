@@ -1112,6 +1112,8 @@ fn run(vs: VideoService) -> ResultType<()> {
                     st::ENCODE_MICROS.load(Ordering::Relaxed),
                     st::FETCH_WAIT_MICROS.load(Ordering::Relaxed),
                     st::FRAMES_SENT.load(Ordering::Relaxed),
+                    st::ENC_SUBMIT_MICROS.load(Ordering::Relaxed),
+                    st::SEND_MICROS.load(Ordering::Relaxed),
                 ];
                 let secs = last_dedupe_report.0.elapsed().as_secs_f64().max(0.001);
                 let d: Vec<u64> = now_counts
@@ -1135,7 +1137,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                         d[3]
                     );
                     let ms_per_s = |micros: u64| micros as f64 / 1000.0 / secs;
-                    log::info!(
+                    let mut line = format!(
                         "[FRAME] {:.1}s sent={} ({:.1} fps) capture={:.0} dedupe={:.0} to={:.0} encode={:.0} fetchwait={:.0} ms/s",
                         secs,
                         d[9],
@@ -1146,6 +1148,17 @@ fn run(vs: VideoService) -> ResultType<()> {
                         ms_per_s(d[7]),
                         ms_per_s(d[8])
                     );
+                    // RD_LOG_SPLIT=1 splits the encode bucket, so a slow frame can be attributed to
+                    // VideoToolbox or to the per-subscriber send instead of the two together.
+                    if scrap::log_split_enabled() {
+                        line.push_str(&format!(
+                            " | enc={:.0} send={:.0} ms/s | qos_fps={:.1}",
+                            ms_per_s(d[10]),
+                            ms_per_s(d[11]),
+                            1.0 / spf.as_secs_f32().max(0.001)
+                        ));
+                    }
+                    log::info!("{line}");
                 }
             }
         }
@@ -1459,7 +1472,15 @@ fn handle_one_frame(
     let mut vpx_no_output = false;
     let first = *first_frame;
     *first_frame = false;
-    match encoder.encode_to_message(frame, ms) {
+    #[cfg(target_os = "macos")]
+    let enc_submit_started = time::Instant::now();
+    let encoded = encoder.encode_to_message(frame, ms);
+    #[cfg(target_os = "macos")]
+    scrap::quartz::stats::add_micros(
+        &scrap::quartz::stats::ENC_SUBMIT_MICROS,
+        enc_submit_started.elapsed(),
+    );
+    match encoded {
         Ok(mut vf) => {
             *encode_fail_counter = 0;
             *encoder_warmed_up = true;
@@ -1471,7 +1492,14 @@ fn handle_one_frame(
                 .unwrap()
                 .as_mut()
                 .map(|r| r.write_message(&msg, width, height));
+            #[cfg(target_os = "macos")]
+            let send_started = time::Instant::now();
             send_conn_ids = sp.send_video_frame(msg);
+            #[cfg(target_os = "macos")]
+            scrap::quartz::stats::add_micros(
+                &scrap::quartz::stats::SEND_MICROS,
+                send_started.elapsed(),
+            );
         }
         Err(e) => {
             vpx_no_output = e.is::<scrap::VpxNoOutput>() || e.to_string() == "no valid frame";

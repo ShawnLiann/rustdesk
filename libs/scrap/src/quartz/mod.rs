@@ -21,6 +21,8 @@ pub mod stats {
     pub static CAPTURE_WAIT_MICROS: AtomicU64 = AtomicU64::new(0);
     pub static TO_MICROS: AtomicU64 = AtomicU64::new(0);
     pub static ENCODE_MICROS: AtomicU64 = AtomicU64::new(0);
+    pub static ENC_SUBMIT_MICROS: AtomicU64 = AtomicU64::new(0);
+    pub static SEND_MICROS: AtomicU64 = AtomicU64::new(0);
     pub static FETCH_WAIT_MICROS: AtomicU64 = AtomicU64::new(0);
 
     #[inline]
