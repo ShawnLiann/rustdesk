@@ -1,7 +1,24 @@
 use crate::{quartz, Frame, Pixfmt};
+use hbb_common::log;
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex, TryLockError};
 use std::{io, mem};
+
+/// Request the surface format the encode path can actually consume. The pixel-buffer path hands the
+/// surface itself to VideoToolbox, so a biplanar 420v surface saves the conversion VT would otherwise
+/// do per frame; every other path converts from packed ARGB8888 and would read a 420v surface's luma
+/// plane as if it were BGRA, so it keeps the packed surface.
+fn capture_pixel_format() -> quartz::PixelFormat {
+    if crate::nv12_capture_enabled() {
+        log::info!(
+            "capture surface: requesting 420v (RD_PIXBUF_NV12=1) - screenshots and the yuv \
+             fallback are not supported on this arm"
+        );
+        quartz::PixelFormat::YCbCr420Video
+    } else {
+        quartz::PixelFormat::Argb8888
+    }
+}
 
 pub struct Capturer {
     inner: quartz::Capturer,
@@ -18,7 +35,7 @@ impl Capturer {
             display.0,
             display.width(),
             display.height(),
-            quartz::PixelFormat::Argb8888,
+            capture_pixel_format(),
             Default::default(),
             move |inner| {
                 if let Ok(mut f) = f.lock() {
@@ -102,6 +119,7 @@ pub struct PixelBuffer<'a> {
 impl<'a> PixelBuffer<'a> {
     /// CVPixelBufferRef wrapping the same IOSurface; caller owns one reference.
     pub fn create_cvpixelbuffer(&self) -> *mut std::ffi::c_void {
+        self.frame.log_surface_format_once();
         self.frame.create_cvpixelbuffer()
     }
 }

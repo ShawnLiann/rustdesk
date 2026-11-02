@@ -207,6 +207,7 @@ impl Frame<'_> {
                 if encode_pixbuf_enabled() && wraps_video_toolbox_codec() {
                     return pixbuf_or_yuv(
                         true,
+                        !nv12_capture_enabled(),
                         || pixelbuffer.create_cvpixelbuffer(),
                         |yuv| convert_to_yuv(&pixelbuffer, yuvfmt, yuv, mid_data),
                         yuv,
@@ -300,6 +301,7 @@ fn wraps_video_toolbox_codec() -> bool {
 
 fn pixbuf_or_yuv<'a>(
     enabled: bool,
+    software_ok: bool,
     wrap: impl FnOnce() -> *mut std::ffi::c_void,
     convert: impl FnOnce(&mut Vec<u8>) -> ResultType<()>,
     yuv: &'a mut Vec<u8>,
@@ -321,6 +323,13 @@ fn pixbuf_or_yuv<'a>(
             pixbuf_stats::counts().0,
             pixbuf_stats::counts().1
         );
+        // A biplanar surface has no packed BGRA bytes to convert from, so the yuv fallback would
+        // hand the encoder mis-typed pixels. Dropping the frame is the honest outcome: the loop
+        // already treats "no frame" as a hiccup, and a picture built from a luma plane would not
+        // look like an error to anyone watching the peer.
+        if !software_ok {
+            bail!("nv12 surface could not be wrapped, frame dropped");
+        }
     }
     convert(yuv)?;
     Ok(EncodeInput::YUV(yuv))
@@ -394,6 +403,31 @@ pub fn no_repeat_enabled() -> bool {
     use std::sync::OnceLock;
     static ENABLED: OnceLock<bool> = OnceLock::new();
     *ENABLED.get_or_init(|| parse_no_repeat_env(std::env::var("RD_NO_REPEAT").ok().as_deref()))
+}
+
+/// `RD_PIXBUF_NV12=1` asks the screen capture for a biplanar `420v` surface, so VideoToolbox encodes
+/// the frame without converting BGRA to NV12 itself - at 4096x2304 that conversion runs on the same
+/// serialised per-frame path the zero-copy work exists to shorten. Only the pixel-buffer encode path
+/// can consume a surface without reading its pixels, so every other path keeps the packed ARGB8888
+/// surface it converts from.
+#[cfg(target_os = "macos")]
+fn parse_nv12_capture_env(value: Option<&str>) -> bool {
+    matches!(value, Some("1"))
+}
+
+#[cfg(target_os = "macos")]
+pub fn nv12_capture_env() -> bool {
+    use std::sync::OnceLock;
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED
+        .get_or_init(|| parse_nv12_capture_env(std::env::var("RD_PIXBUF_NV12").ok().as_deref()))
+}
+
+/// Deliberately not cached: the negotiated codec can change mid-process, and with it whether the
+/// encoder will take a surface at all.
+#[cfg(target_os = "macos")]
+pub fn nv12_capture_enabled() -> bool {
+    nv12_capture_env() && encode_pixbuf_enabled() && wraps_video_toolbox_codec()
 }
 
 /// `RD_LOG_SPLIT=1` adds `enc=` / `send=` / `qos_fps=` to the per-frame budget line, splitting the
@@ -495,6 +529,23 @@ mod pixbuf_env_tests {
         assert!(parse_pixbuf_env(Some("1")));
         for value in ["0", "", "true", "yes", "2", " 1", "1 "] {
             assert!(!parse_pixbuf_env(Some(value)), "{:?} must not enable it", value);
+        }
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod nv12_capture_env_tests {
+    use super::parse_nv12_capture_env;
+
+    #[test]
+    fn nv12_capture_only_the_exact_value_one_enables_it() {
+        assert!(!parse_nv12_capture_env(None));
+        assert!(parse_nv12_capture_env(Some("1")));
+        for value in ["0", "", "true", "yes", "2", " 1", "1 "] {
+            assert!(
+                !parse_nv12_capture_env(Some(value)),
+                "{value:?} must keep the packed surface"
+            );
         }
     }
 }

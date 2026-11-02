@@ -1,3 +1,4 @@
+use hbb_common::log;
 use std::{cell::OnceCell, ptr, slice};
 
 use super::ffi::*;
@@ -36,6 +37,21 @@ impl Frame {
 
     pub fn stride(&self) -> usize {
         self.bgra_stride
+    }
+
+    /// Prove which format the surface really carries, once per process. A capture that was asked for
+    /// 420v and silently got ARGB8888 would otherwise be indistinguishable from "the change made no
+    /// difference", which is the one conclusion an A/B arm must never reach by accident.
+    pub fn log_surface_format_once(&self) {
+        static ONCE: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+        ONCE.get_or_init(|| {
+            let fourcc = unsafe { IOSurfaceGetPixelFormat(self.surface) };
+            let name: String = [24u32, 16, 8, 0]
+                .iter()
+                .map(|shift| ((fourcc >> shift) & 0xff) as u8 as char)
+                .collect();
+            log::info!("capture surface format in effect: {name}");
+        });
     }
 
     /// Wrap the surface without copying, with the matrix VideoToolbox should convert with. The

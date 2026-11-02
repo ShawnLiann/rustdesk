@@ -205,6 +205,7 @@ extern "C" {
     pub fn IOSurfaceUnlock(buffer: IOSurfaceRef, options: u32, seed: *mut u32) -> i32;
     pub fn IOSurfaceGetBaseAddressOfPlane(buffer: IOSurfaceRef, index: usize) -> *mut c_void;
     pub fn IOSurfaceGetBytesPerRowOfPlane(buffer: IOSurfaceRef, index: usize) -> usize;
+    pub fn IOSurfaceGetPixelFormat(buffer: IOSurfaceRef) -> u32;
 
     // Dispatch
 
