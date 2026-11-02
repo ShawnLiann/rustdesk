@@ -356,6 +356,83 @@ pub fn no_dedupe_enabled() -> bool {
     *ENABLED.get_or_init(|| parse_no_dedupe_env(std::env::var("RD_NO_DEDUPE").ok().as_deref()))
 }
 
+/// `RD_LAZY_BGRA=0` restores the eager surface copy taken at capture time, so an arm can price what
+/// materialising the BGRA buffer on first use buys. Unset, or anything but `0`, stays lazy.
+#[cfg(target_os = "macos")]
+fn parse_lazy_bgra_env(value: Option<&str>) -> bool {
+    !matches!(value.map(str::trim), Some("0"))
+}
+
+#[cfg(target_os = "macos")]
+pub fn lazy_bgra_enabled() -> bool {
+    use std::sync::OnceLock;
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| parse_lazy_bgra_env(std::env::var("RD_LAZY_BGRA").ok().as_deref()))
+}
+
+/// The per-frame budget lines repeat every five seconds for the life of a session; `RD_LOAD_LOG=0`
+/// silences them for a build that is not being measured, without dropping the counters behind them.
+#[cfg(target_os = "macos")]
+fn parse_load_log_env(value: Option<&str>) -> bool {
+    !matches!(value.map(str::trim), Some("0"))
+}
+
+#[cfg(target_os = "macos")]
+pub fn load_log_enabled() -> bool {
+    use std::sync::OnceLock;
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| parse_load_log_env(std::env::var("RD_LOAD_LOG").ok().as_deref()))
+}
+
+/// `RD_NO_REPEAT=1` stops the WouldBlock arm from re-encoding the previous frame, so both the cost
+/// of the static-screen repeat and the peer's staleness without it can be priced in one build.
+fn parse_no_repeat_env(value: Option<&str>) -> bool {
+    matches!(value.map(str::trim), Some("1"))
+}
+
+pub fn no_repeat_enabled() -> bool {
+    use std::sync::OnceLock;
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| parse_no_repeat_env(std::env::var("RD_NO_REPEAT").ok().as_deref()))
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod switch_env_tests {
+    use super::{parse_lazy_bgra_env, parse_load_log_env, parse_no_repeat_env};
+
+    #[test]
+    fn lazy_bgra_stays_on_unless_switched_off() {
+        for value in [None, Some("1"), Some("true"), Some("")] {
+            assert!(
+                parse_lazy_bgra_env(value),
+                "{value:?} must keep the copy lazy"
+            );
+        }
+        assert!(!parse_lazy_bgra_env(Some("0")));
+        assert!(!parse_lazy_bgra_env(Some(" 0 ")));
+    }
+
+    #[test]
+    fn load_log_stays_on_unless_switched_off() {
+        for value in [None, Some("1"), Some("true")] {
+            assert!(parse_load_log_env(value), "{value:?} must keep logging");
+        }
+        assert!(!parse_load_log_env(Some("0")));
+    }
+
+    #[test]
+    fn no_repeat_only_the_exact_value_one_enables_it() {
+        assert!(!parse_no_repeat_env(None));
+        assert!(parse_no_repeat_env(Some("1")));
+        for value in ["0", "", "true", "yes", " 1"] {
+            assert!(
+                !parse_no_repeat_env(Some(value)),
+                "{value:?} must not disable the repeat"
+            );
+        }
+    }
+}
+
 #[cfg(all(test, target_os = "macos"))]
 mod no_dedupe_env_tests {
     use super::parse_no_dedupe_env;

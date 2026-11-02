@@ -976,7 +976,9 @@ fn run(vs: VideoService) -> ResultType<()> {
                     }
                 }
                 // yuv.len() > 0 means the frame is not texture.
-                let repeat_input = if repeat_encode_allowed(
+                let repeat_input = if scrap::no_repeat_enabled() {
+                    None
+                } else if repeat_encode_allowed(
                     encoder.latency_free(),
                     yuv.len() > 0,
                     repeat_encode_counter,
@@ -1123,26 +1125,28 @@ fn run(vs: VideoService) -> ResultType<()> {
                 } else {
                     0.0
                 };
-                log::info!(
-                    "[DEDUPE] {:.1}s: compositor complete={} idle={} byte-compare checked={} blocked={} ({pct:.1}% of checked)",
-                    secs,
-                    d[0],
-                    d[1],
-                    d[2],
-                    d[3]
-                );
-                let ms_per_s = |micros: u64| micros as f64 / 1000.0 / secs;
-                log::info!(
-                    "[FRAME] {:.1}s sent={} ({:.1} fps) capture={:.0} dedupe={:.0} to={:.0} encode={:.0} fetchwait={:.0} ms/s",
-                    secs,
-                    d[9],
-                    d[9] as f64 / secs,
-                    ms_per_s(d[5]),
-                    ms_per_s(d[4]),
-                    ms_per_s(d[6]),
-                    ms_per_s(d[7]),
-                    ms_per_s(d[8])
-                );
+                if scrap::load_log_enabled() {
+                    log::info!(
+                        "[DEDUPE] {:.1}s: compositor complete={} idle={} byte-compare checked={} blocked={} ({pct:.1}% of checked)",
+                        secs,
+                        d[0],
+                        d[1],
+                        d[2],
+                        d[3]
+                    );
+                    let ms_per_s = |micros: u64| micros as f64 / 1000.0 / secs;
+                    log::info!(
+                        "[FRAME] {:.1}s sent={} ({:.1} fps) capture={:.0} dedupe={:.0} to={:.0} encode={:.0} fetchwait={:.0} ms/s",
+                        secs,
+                        d[9],
+                        d[9] as f64 / secs,
+                        ms_per_s(d[5]),
+                        ms_per_s(d[4]),
+                        ms_per_s(d[6]),
+                        ms_per_s(d[7]),
+                        ms_per_s(d[8])
+                    );
+                }
             }
         }
 

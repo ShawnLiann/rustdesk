@@ -111,25 +111,54 @@ jobs:
           sed -i -e "s/MACOSX_DEPLOYMENT_TARGET = [0-9]*.[0-9]*;/MACOSX_DEPLOYMENT_TARGET = ${MIN_MACOS_VERSION};/" flutter/macos/Runner.xcodeproj/project.pbxproj
           ./build.py --flutter --hwcodec --unix-file-copy-paste --screencapturekit
 
-      # Three claims are only prose without this step: that the pixel-buffer path stays off unless
+      # Five claims are only prose without this step: that the pixel-buffer path stays off unless
       # RD_ENCODE_PIXBUF is exactly "1", that the dedupe skip stays off unless RD_NO_DEDUPE is
-      # exactly "1", and that scrap still builds when hwcodec is not compiled in.
-      # `cargo test --no-default-features` compiles the last and runs the first two; the filter is
-      # the shared `_env` in both test-module paths, so read `running 4 tests` to confirm both.
-      - name: Test the opt-in gate without hwcodec
+      # exactly "1", that the lazy BGRA copy and the per-frame budget lines stay on unless their
+      # switch says otherwise, that the repeat can be switched off with RD_NO_REPEAT=1, and that
+      # scrap still builds when hwcodec is not compiled in. `cargo test --no-default-features`
+      # compiles the last and runs the rest; the filter is the shared `_env` in every test-module
+      # path, and the greps below name each test so a filter that selects nothing cannot pass.
+      - name: Test the switch gates without hwcodec
         run: |
-          cargo test -p scrap --no-default-features _env -- --nocapture
+          set -o pipefail
+          cargo test -p scrap --no-default-features _env -- --nocapture 2>&1 | tee env-tests.log
+          for t in no_dedupe_off_when_the_variable_is_absent \
+                   no_dedupe_only_the_exact_value_one_enables_it \
+                   off_when_the_variable_is_absent \
+                   only_the_exact_value_one_enables_it \
+                   lazy_bgra_stays_on_unless_switched_off \
+                   load_log_stays_on_unless_switched_off \
+                   no_repeat_only_the_exact_value_one_enables_it; do
+            if ! grep -q "test $t ... ok" env-tests.log; then
+              echo "MISSING OR FAILED: $t"
+              exit 1
+            fi
+          done
+          grep "test result:" env-tests.log
 
-      - name: Show warm-up instrumentation strings
+      - name: Assert every runtime switch made it into the dmg
         run: |
-          echo "--- binary contains WARMUP log ---"
-          strings flutter/build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/liblibrustdesk.dylib | grep -c "WARMUP first packet" || true
-          echo "--- h264_videotoolbox string present ---"
-          strings flutter/build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/liblibrustdesk.dylib | grep -c "h264_videotoolbox" || true
-          echo "--- per-frame budget line present (0 = the instrument did not make it into the dmg) ---"
-          strings flutter/build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/liblibrustdesk.dylib | grep -cF "[FRAME] " || true
-          echo "--- dedupe-skip env name present ---"
-          strings flutter/build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/liblibrustdesk.dylib | grep -cF "RD_NO_DEDUPE" || true
+          DYLIB=flutter/build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/liblibrustdesk.dylib
+          fail=0
+          # Every switch this build is meant to expose. The name has to survive in the binary, or the
+          # env var silently does nothing and the arm measures a path it was not meant to measure.
+          for name in RD_ENCODE_PIXBUF RD_NO_DEDUPE RD_LAZY_BGRA RD_LOAD_LOG RD_NO_REPEAT \
+                      RD_FORCE_CODEC RD_REFUSE_LIMIT RUSTDESK_VT_ZEROCOPY \
+                      FlutterRgbaRendererPluginOnPixelBuffer; do
+            n=$(strings -a "$DYLIB" | grep -cF "$name" || true)
+            echo "$name = $n"
+            if [ "$n" -eq 0 ]; then echo "MISSING SWITCH: $name"; fail=1; fi
+          done
+          # The paths themselves, so a build that lost a whole feature cannot pass on env names alone.
+          for marker in "[FRAME] " "[DEDUPE] " "encode path: CVPixelBuffer" "h264_videotoolbox" \
+                        "gpu frames wanted"; do
+            n=$(strings -a "$DYLIB" | grep -cF "$marker" || true)
+            echo "$marker = $n"
+            if [ "$n" -eq 0 ]; then echo "MISSING PATH: $marker"; fail=1; fi
+          done
+          echo "--- WARMUP first packet (expected 0: this pin does not carry the warm-up instrument) ---"
+          strings -a "$DYLIB" | grep -cF "WARMUP first packet" || true
+          exit $fail
 
       - name: Create unsigned dmg
         run: |
@@ -235,6 +264,12 @@ jobs:
         run: |
           cargo test --locked --features hwcodec,flutter,unix-file-copy-paste --lib server::video_service::tests:: -- --nocapture
 
+      # The refusal bound and its RD_REFUSE_LIMIT override are the client half's arithmetic, and the
+      # dmg build compiles no #[cfg(test)] code, so this step is the only place they run.
+      - name: Test the refusal-streak bound and its override
+        run: |
+          cargo test --locked --features hwcodec,flutter,unix-file-copy-paste --lib client::io_loop::gpu_refuse_streak_tests:: -- --nocapture
+
       - name: Build rustdesk
         run: |
           MIN_MACOS_VERSION="12.3"
@@ -244,16 +279,29 @@ jobs:
           sed -i -e "s/MACOSX_DEPLOYMENT_TARGET = [0-9]*.[0-9]*;/MACOSX_DEPLOYMENT_TARGET = ${MIN_MACOS_VERSION};/" flutter/macos/Runner.xcodeproj/project.pbxproj
           ./build.py --flutter --hwcodec --unix-file-copy-paste --screencapturekit
 
-      - name: Show warm-up instrumentation strings
+      - name: Assert every runtime switch made it into the dmg
         run: |
-          echo "--- binary contains WARMUP log ---"
-          strings flutter/build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/liblibrustdesk.dylib | grep -c "WARMUP first packet" || true
-          echo "--- h264_videotoolbox string present ---"
-          strings flutter/build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/liblibrustdesk.dylib | grep -c "h264_videotoolbox" || true
-          echo "--- per-frame budget line present (0 = the instrument did not make it into the dmg) ---"
-          strings flutter/build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/liblibrustdesk.dylib | grep -cF "[FRAME] " || true
-          echo "--- dedupe-skip env name present ---"
-          strings flutter/build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/liblibrustdesk.dylib | grep -cF "RD_NO_DEDUPE" || true
+          DYLIB=flutter/build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/liblibrustdesk.dylib
+          fail=0
+          # Every switch this build is meant to expose. The name has to survive in the binary, or the
+          # env var silently does nothing and the arm measures a path it was not meant to measure.
+          for name in RD_ENCODE_PIXBUF RD_NO_DEDUPE RD_LAZY_BGRA RD_LOAD_LOG RD_NO_REPEAT \
+                      RD_FORCE_CODEC RD_REFUSE_LIMIT RUSTDESK_VT_ZEROCOPY \
+                      FlutterRgbaRendererPluginOnPixelBuffer; do
+            n=$(strings -a "$DYLIB" | grep -cF "$name" || true)
+            echo "$name = $n"
+            if [ "$n" -eq 0 ]; then echo "MISSING SWITCH: $name"; fail=1; fi
+          done
+          # The paths themselves, so a build that lost a whole feature cannot pass on env names alone.
+          for marker in "[FRAME] " "[DEDUPE] " "encode path: CVPixelBuffer" "h264_videotoolbox" \
+                        "gpu frames wanted"; do
+            n=$(strings -a "$DYLIB" | grep -cF "$marker" || true)
+            echo "$marker = $n"
+            if [ "$n" -eq 0 ]; then echo "MISSING PATH: $marker"; fail=1; fi
+          done
+          echo "--- WARMUP first packet (expected 0: this pin does not carry the warm-up instrument) ---"
+          strings -a "$DYLIB" | grep -cF "WARMUP first packet" || true
+          exit $fail
 
       - name: Create unsigned dmg
         run: |

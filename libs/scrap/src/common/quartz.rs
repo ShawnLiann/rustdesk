@@ -70,6 +70,9 @@ impl crate::TraitCapturer for Capturer {
                                 return Err(io::ErrorKind::WouldBlock.into());
                             }
                         }
+                        if !crate::lazy_bgra_enabled() {
+                            let _ = frame.bgra(self.height());
+                        }
                         Ok(Frame::PixelBuffer(PixelBuffer {
                             frame,
                             data: PhantomData,
