@@ -1151,11 +1151,14 @@ fn run(vs: VideoService) -> ResultType<()> {
                     // RD_LOG_SPLIT=1 splits the encode bucket, so a slow frame can be attributed to
                     // VideoToolbox or to the per-subscriber send instead of the two together.
                     if scrap::log_split_enabled() {
+                        let (wrapped, fell_back) = scrap::pixbuf_counts();
                         line.push_str(&format!(
-                            " | enc={:.0} send={:.0} ms/s | qos_fps={:.1}",
+                            " | enc={:.0} send={:.0} ms/s | qos_fps={:.1} | pixbuf={}/{}",
                             ms_per_s(d[10]),
                             ms_per_s(d[11]),
-                            1.0 / spf.as_secs_f32().max(0.001)
+                            1.0 / spf.as_secs_f32().max(0.001),
+                            wrapped,
+                            fell_back
                         ));
                     }
                     log::info!("{line}");

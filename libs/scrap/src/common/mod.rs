@@ -326,6 +326,13 @@ fn pixbuf_or_yuv<'a>(
     Ok(EncodeInput::YUV(yuv))
 }
 
+/// Cumulative (wrapped, fell back) counts for the direct-encode path. A window that shows any
+/// fallback is not measuring the zero-copy path, so the budget line has to be able to say so.
+#[cfg(target_os = "macos")]
+pub fn pixbuf_counts() -> (u64, u64) {
+    pixbuf_stats::counts()
+}
+
 /// The direct encode path changes what the encoder is fed, so it stays off unless the
 /// environment names it exactly. Anything else - unset, empty, "true", " 1" - is off.
 #[cfg(target_os = "macos")]
