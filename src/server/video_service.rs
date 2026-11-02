@@ -718,7 +718,7 @@ fn run(vs: VideoService) -> ResultType<()> {
     // byte compare dropped a frame — the two dedupes are separate, and only this ratio says
     // whether the byte compare still pays for its per-frame surface copy.
     #[cfg(target_os = "macos")]
-    let mut last_dedupe_report = (time::Instant::now(), [0u64; 10]);
+    let mut last_dedupe_report = (time::Instant::now(), [0u64; 12]);
     #[cfg(windows)]
     let mut try_gdi = 1;
     #[cfg(windows)]
