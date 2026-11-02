@@ -718,7 +718,7 @@ fn run(vs: VideoService) -> ResultType<()> {
     // byte compare dropped a frame — the two dedupes are separate, and only this ratio says
     // whether the byte compare still pays for its per-frame surface copy.
     #[cfg(target_os = "macos")]
-    let mut last_dedupe_report = (time::Instant::now(), [0u64; 4]);
+    let mut last_dedupe_report = (time::Instant::now(), [0u64; 10]);
     #[cfg(windows)]
     let mut try_gdi = 1;
     #[cfg(windows)]
@@ -820,6 +820,8 @@ fn run(vs: VideoService) -> ResultType<()> {
 
         let time = now - start;
         let ms = (time.as_secs() * 1000 + time.subsec_millis() as u64) as i64;
+        #[cfg(target_os = "macos")]
+        let capture_started = time::Instant::now();
         let res = match c.frame(spf) {
             Ok(frame) => {
                 repeat_encode_counter = 0;
@@ -871,8 +873,17 @@ fn run(vs: VideoService) -> ResultType<()> {
                         }
                     }
 
+                    #[cfg(target_os = "macos")]
+                    let to_started = time::Instant::now();
                     let frame = frame.to(encoder.yuvfmt(), &mut yuv, &mut mid_data)?;
+                    #[cfg(target_os = "macos")]
+                    scrap::quartz::stats::add_micros(
+                        &scrap::quartz::stats::TO_MICROS,
+                        to_started.elapsed(),
+                    );
                     static_refresh.on_frame(&frame);
+                    #[cfg(target_os = "macos")]
+                    let encode_started = time::Instant::now();
                     let result = handle_one_frame(
                         display_idx,
                         &sp,
@@ -886,6 +897,14 @@ fn run(vs: VideoService) -> ResultType<()> {
                         capture_width,
                         capture_height,
                     )?;
+                    #[cfg(target_os = "macos")]
+                    {
+                        scrap::quartz::stats::add_micros(
+                            &scrap::quartz::stats::ENCODE_MICROS,
+                            encode_started.elapsed(),
+                        );
+                        scrap::quartz::stats::bump(&scrap::quartz::stats::FRAMES_SENT);
+                    }
                     static_refresh.on_frame_encoded(&result);
                     frame_controller.set_send(now, result.send_conn_ids);
                     send_counter += 1;
@@ -902,6 +921,12 @@ fn run(vs: VideoService) -> ResultType<()> {
             }
             Err(err) => Err(err),
         };
+
+        #[cfg(target_os = "macos")]
+        scrap::quartz::stats::add_micros(
+            &scrap::quartz::stats::CAPTURE_WAIT_MICROS,
+            capture_started.elapsed(),
+        );
 
         match res {
             Err(ref e) if e.kind() == WouldBlock => {
@@ -1015,11 +1040,18 @@ fn run(vs: VideoService) -> ResultType<()> {
         {
             use std::sync::atomic::Ordering;
             if last_dedupe_report.0.elapsed().as_secs() >= 5 {
+                use scrap::quartz::stats as st;
                 let now_counts = [
-                    scrap::quartz::stats::FRAME_COMPLETE.load(Ordering::Relaxed),
-                    scrap::quartz::stats::FRAME_IDLE.load(Ordering::Relaxed),
-                    scrap::quartz::stats::DEDUPE_CHECKED.load(Ordering::Relaxed),
-                    scrap::quartz::stats::DEDUPE_BLOCKED.load(Ordering::Relaxed),
+                    st::FRAME_COMPLETE.load(Ordering::Relaxed),
+                    st::FRAME_IDLE.load(Ordering::Relaxed),
+                    st::DEDUPE_CHECKED.load(Ordering::Relaxed),
+                    st::DEDUPE_BLOCKED.load(Ordering::Relaxed),
+                    st::DEDUPE_MICROS.load(Ordering::Relaxed),
+                    st::CAPTURE_WAIT_MICROS.load(Ordering::Relaxed),
+                    st::TO_MICROS.load(Ordering::Relaxed),
+                    st::ENCODE_MICROS.load(Ordering::Relaxed),
+                    st::FETCH_WAIT_MICROS.load(Ordering::Relaxed),
+                    st::FRAMES_SENT.load(Ordering::Relaxed),
                 ];
                 let secs = last_dedupe_report.0.elapsed().as_secs_f64().max(0.001);
                 let d: Vec<u64> = now_counts
@@ -1041,6 +1073,18 @@ fn run(vs: VideoService) -> ResultType<()> {
                     d[2],
                     d[3]
                 );
+                let ms_per_s = |micros: u64| micros as f64 / 1000.0 / secs;
+                log::info!(
+                    "[FRAME] {:.1}s sent={} ({:.1} fps) capture={:.0} dedupe={:.0} to={:.0} encode={:.0} fetchwait={:.0} ms/s",
+                    secs,
+                    d[9],
+                    d[9] as f64 / secs,
+                    ms_per_s(d[5]),
+                    ms_per_s(d[4]),
+                    ms_per_s(d[6]),
+                    ms_per_s(d[7]),
+                    ms_per_s(d[8])
+                );
             }
         }
 
@@ -1057,6 +1101,11 @@ fn run(vs: VideoService) -> ResultType<()> {
                 break;
             }
         }
+        #[cfg(target_os = "macos")]
+        scrap::quartz::stats::add_micros(
+            &scrap::quartz::stats::FETCH_WAIT_MICROS,
+            wait_begin.elapsed(),
+        );
         DISPLAY_CONN_IDS.lock().unwrap().remove(&display_idx);
 
         let elapsed = now.elapsed();

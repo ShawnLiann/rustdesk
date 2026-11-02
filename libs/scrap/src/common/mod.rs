@@ -328,6 +328,41 @@ fn encode_pixbuf_enabled() -> bool {
     })
 }
 
+/// The byte compare can only answer "same as last frame" by keeping a heap copy of the surface, so
+/// an arm with `RD_NO_DEDUPE=1` drops both the compare and that copy to price what it buys.
+#[cfg(target_os = "macos")]
+fn parse_no_dedupe_env(value: Option<&str>) -> bool {
+    matches!(value, Some("1"))
+}
+
+#[cfg(target_os = "macos")]
+pub fn no_dedupe_enabled() -> bool {
+    use std::sync::OnceLock;
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| parse_no_dedupe_env(std::env::var("RD_NO_DEDUPE").ok().as_deref()))
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod no_dedupe_env_tests {
+    use super::parse_no_dedupe_env;
+
+    #[test]
+    fn no_dedupe_off_when_the_variable_is_absent() {
+        assert!(!parse_no_dedupe_env(None));
+    }
+
+    #[test]
+    fn no_dedupe_only_the_exact_value_one_enables_it() {
+        assert!(parse_no_dedupe_env(Some("1")));
+        for value in ["0", "", "true", "yes", "2", " 1", "1 "] {
+            assert!(
+                !parse_no_dedupe_env(Some(value)),
+                "{value:?} must not enable it"
+            );
+        }
+    }
+}
+
 #[cfg(all(test, target_os = "macos"))]
 mod pixbuf_env_tests {
     use super::parse_pixbuf_env;

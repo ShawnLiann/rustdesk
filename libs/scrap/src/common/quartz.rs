@@ -54,11 +54,21 @@ impl crate::TraitCapturer for Capturer {
                 match frame {
                     Some(frame) => {
                         quartz::stats::bump(&quartz::stats::DEDUPE_CHECKED);
-                        if crate::would_block_if_equal(&mut self.saved_raw_data, frame.inner())
-                            .is_err()
-                        {
-                            quartz::stats::bump(&quartz::stats::DEDUPE_BLOCKED);
-                            return Err(io::ErrorKind::WouldBlock.into());
+                        if !crate::no_dedupe_enabled() {
+                            let started = std::time::Instant::now();
+                            let same = crate::would_block_if_equal(
+                                &mut self.saved_raw_data,
+                                frame.inner(),
+                            )
+                            .is_err();
+                            quartz::stats::add_micros(
+                                &quartz::stats::DEDUPE_MICROS,
+                                started.elapsed(),
+                            );
+                            if same {
+                                quartz::stats::bump(&quartz::stats::DEDUPE_BLOCKED);
+                                return Err(io::ErrorKind::WouldBlock.into());
+                            }
                         }
                         Ok(Frame::PixelBuffer(PixelBuffer {
                             frame,

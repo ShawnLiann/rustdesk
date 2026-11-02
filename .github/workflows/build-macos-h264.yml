@@ -111,12 +111,14 @@ jobs:
           sed -i -e "s/MACOSX_DEPLOYMENT_TARGET = [0-9]*.[0-9]*;/MACOSX_DEPLOYMENT_TARGET = ${MIN_MACOS_VERSION};/" flutter/macos/Runner.xcodeproj/project.pbxproj
           ./build.py --flutter --hwcodec --unix-file-copy-paste --screencapturekit
 
-      # Two claims are only prose without this step: that the pixel-buffer path stays off unless
-      # RD_ENCODE_PIXBUF is exactly "1", and that scrap still builds when hwcodec is not compiled
-      # in. `cargo test --no-default-features` compiles the second and runs the first.
+      # Three claims are only prose without this step: that the pixel-buffer path stays off unless
+      # RD_ENCODE_PIXBUF is exactly "1", that the dedupe skip stays off unless RD_NO_DEDUPE is
+      # exactly "1", and that scrap still builds when hwcodec is not compiled in.
+      # `cargo test --no-default-features` compiles the last and runs the first two; the filter is
+      # the shared `_env` in both test-module paths, so read `running 4 tests` to confirm both.
       - name: Test the opt-in gate without hwcodec
         run: |
-          cargo test -p scrap --no-default-features pixbuf_env -- --nocapture
+          cargo test -p scrap --no-default-features _env -- --nocapture
 
       - name: Show warm-up instrumentation strings
         run: |
@@ -124,6 +126,10 @@ jobs:
           strings flutter/build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/liblibrustdesk.dylib | grep -c "WARMUP first packet" || true
           echo "--- h264_videotoolbox string present ---"
           strings flutter/build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/liblibrustdesk.dylib | grep -c "h264_videotoolbox" || true
+          echo "--- per-frame budget line present (0 = the instrument did not make it into the dmg) ---"
+          strings flutter/build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/liblibrustdesk.dylib | grep -cF "[FRAME] " || true
+          echo "--- dedupe-skip env name present ---"
+          strings flutter/build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/liblibrustdesk.dylib | grep -cF "RD_NO_DEDUPE" || true
 
       - name: Create unsigned dmg
         run: |
@@ -238,6 +244,10 @@ jobs:
           strings flutter/build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/liblibrustdesk.dylib | grep -c "WARMUP first packet" || true
           echo "--- h264_videotoolbox string present ---"
           strings flutter/build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/liblibrustdesk.dylib | grep -c "h264_videotoolbox" || true
+          echo "--- per-frame budget line present (0 = the instrument did not make it into the dmg) ---"
+          strings flutter/build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/liblibrustdesk.dylib | grep -cF "[FRAME] " || true
+          echo "--- dedupe-skip env name present ---"
+          strings flutter/build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/liblibrustdesk.dylib | grep -cF "RD_NO_DEDUPE" || true
 
       - name: Create unsigned dmg
         run: |

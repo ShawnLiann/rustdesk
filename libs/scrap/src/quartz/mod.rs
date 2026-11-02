@@ -14,9 +14,23 @@ pub mod stats {
     pub static DEDUPE_CHECKED: AtomicU64 = AtomicU64::new(0);
     pub static DEDUPE_BLOCKED: AtomicU64 = AtomicU64::new(0);
 
+    pub static FRAMES_SENT: AtomicU64 = AtomicU64::new(0);
+    /// Microseconds per phase of one lap of the capture → encode → send loop. Reported as ms/s so
+    /// the phases can be read as a budget that adds up to the wall second they happened in.
+    pub static DEDUPE_MICROS: AtomicU64 = AtomicU64::new(0);
+    pub static CAPTURE_WAIT_MICROS: AtomicU64 = AtomicU64::new(0);
+    pub static TO_MICROS: AtomicU64 = AtomicU64::new(0);
+    pub static ENCODE_MICROS: AtomicU64 = AtomicU64::new(0);
+    pub static FETCH_WAIT_MICROS: AtomicU64 = AtomicU64::new(0);
+
     #[inline]
     pub fn bump(counter: &AtomicU64) {
         counter.fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[inline]
+    pub fn add_micros(counter: &AtomicU64, elapsed: std::time::Duration) {
+        counter.fetch_add(elapsed.as_micros() as u64, Ordering::Relaxed);
     }
 
     #[inline]
