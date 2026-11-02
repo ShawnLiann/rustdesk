@@ -824,6 +824,11 @@ fn run(vs: VideoService) -> ResultType<()> {
         let capture_started = time::Instant::now();
         let res = match c.frame(spf) {
             Ok(frame) => {
+                #[cfg(target_os = "macos")]
+                scrap::quartz::stats::add_micros(
+                    &scrap::quartz::stats::CAPTURE_WAIT_MICROS,
+                    capture_started.elapsed(),
+                );
                 repeat_encode_counter = 0;
                 if frame.valid() {
                     let screenshot_key = (vs.source, display_idx);
@@ -919,14 +924,15 @@ fn run(vs: VideoService) -> ResultType<()> {
                 }
                 Ok(())
             }
-            Err(err) => Err(err),
+            Err(err) => {
+                #[cfg(target_os = "macos")]
+                scrap::quartz::stats::add_micros(
+                    &scrap::quartz::stats::CAPTURE_WAIT_MICROS,
+                    capture_started.elapsed(),
+                );
+                Err(err)
+            }
         };
-
-        #[cfg(target_os = "macos")]
-        scrap::quartz::stats::add_micros(
-            &scrap::quartz::stats::CAPTURE_WAIT_MICROS,
-            capture_started.elapsed(),
-        );
 
         match res {
             Err(ref e) if e.kind() == WouldBlock => {
