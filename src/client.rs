@@ -4035,8 +4035,28 @@ pub fn start_video_thread<F, T>(
         let mut count = 0;
         let mut duration = std::time::Duration::ZERO;
         let mut skip_beginning = 0;
+        // Decode-side budget behind the same RD_LOG_SPLIT=1 the host uses, so one build can be either
+        // side of a session and still say where the frame time went. Counters are always accumulated;
+        // only the line is gated.
+        #[cfg(target_os = "macos")]
+        let mut dec_micros: u64 = 0;
+        #[cfg(target_os = "macos")]
+        let mut present_micros: u64 = 0;
+        #[cfg(target_os = "macos")]
+        let mut wait_micros: u64 = 0;
+        #[cfg(target_os = "macos")]
+        let mut frames_done: u64 = 0;
+        #[cfg(target_os = "macos")]
+        let mut last_report = std::time::Instant::now();
         loop {
-            if let Ok(data) = video_receiver.recv() {
+            #[cfg(target_os = "macos")]
+            let wait_started = std::time::Instant::now();
+            let received = video_receiver.recv();
+            #[cfg(target_os = "macos")]
+            {
+                wait_micros += wait_started.elapsed().as_micros() as u64;
+            }
+            if let Ok(data) = received {
                 match data {
                     MediaData::VideoFrame(_) | MediaData::VideoQueue => {
                         let vf = match data {
@@ -4083,11 +4103,21 @@ pub fn start_video_thread<F, T>(
                             let mut pixelbuffer = true;
                             let mut tmp_chroma = None;
                             let format_changed = handler.decoder.format() != format;
-                            match handler.handle_frame(vf, &mut pixelbuffer, &mut tmp_chroma) {
+                            #[cfg(target_os = "macos")]
+                            let dec_started = std::time::Instant::now();
+                            let handled =
+                                handler.handle_frame(vf, &mut pixelbuffer, &mut tmp_chroma);
+                            #[cfg(target_os = "macos")]
+                            {
+                                dec_micros += dec_started.elapsed().as_micros() as u64;
+                            }
+                            match handled {
                                 Ok(true) => {
                                     // Take it before borrowing rgb: one GPU
                                     // frame is delivered at most once.
                                     let pixelbuffer_output = handler.take_pixelbuffer();
+                                    #[cfg(target_os = "macos")]
+                                    let present_started = std::time::Instant::now();
                                     video_callback(
                                         display,
                                         &mut handler.rgb,
@@ -4095,6 +4125,33 @@ pub fn start_video_thread<F, T>(
                                         pixelbuffer,
                                         pixelbuffer_output,
                                     );
+                                    #[cfg(target_os = "macos")]
+                                    {
+                                        present_micros +=
+                                            present_started.elapsed().as_micros() as u64;
+                                        frames_done += 1;
+                                        let window = last_report.elapsed();
+                                        if window.as_secs() >= 5 {
+                                            if scrap::log_split_enabled() {
+                                                let secs = window.as_secs_f64();
+                                                let ms_per_s = |v: u64| v as f64 / 1000.0 / secs;
+                                                log::info!(
+                                                    "[DEC] {:.1}s frames={} ({:.1} fps) decode={:.0} present={:.0} wait={:.0} ms/s",
+                                                    secs,
+                                                    frames_done,
+                                                    frames_done as f64 / secs,
+                                                    ms_per_s(dec_micros),
+                                                    ms_per_s(present_micros),
+                                                    ms_per_s(wait_micros)
+                                                );
+                                            }
+                                            dec_micros = 0;
+                                            present_micros = 0;
+                                            wait_micros = 0;
+                                            frames_done = 0;
+                                            last_report = std::time::Instant::now();
+                                        }
+                                    }
 
                                     // chroma
                                     if tmp_chroma.is_some() && last_chroma != tmp_chroma {
