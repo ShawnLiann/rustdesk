@@ -456,9 +456,12 @@ pub(crate) fn diff_budget_decision(
     threshold: u64,
     skipped: usize,
     max_skip: usize,
+    force: bool,
 ) -> (bool, u64, usize) {
     let accum = accum.saturating_add(diff);
-    if accum >= threshold || skipped >= max_skip {
+    // `force` is a change the eye cannot miss - one whole sampled chunk rewritten, or a surface that
+    // could not be compared at all - and no budget should defer it.
+    if force || accum >= threshold || skipped >= max_skip {
         (true, 0, 0)
     } else {
         (false, accum, skipped + 1)
@@ -688,23 +691,23 @@ mod diff_budget_tests {
 
     #[test]
     fn the_budget_only_delivers_once_the_accumulated_change_covers_it() {
-        let (deliver, accum, skipped) = diff_budget_decision(0, 100, 300, 0, 30);
+        let (deliver, accum, skipped) = diff_budget_decision(0, 100, 300, 0, 30, false);
         assert!(!deliver, "a third of the budget is not a frame");
         assert_eq!((accum, skipped), (100, 1));
 
-        let (deliver, accum, _) = diff_budget_decision(accum, 100, 300, skipped, 30);
+        let (deliver, accum, _) = diff_budget_decision(accum, 100, 300, skipped, 30, false);
         assert!(!deliver);
         assert_eq!(accum, 200);
 
         // The third frame crosses it, and a delivery restarts both counters.
-        let (deliver, accum, skipped) = diff_budget_decision(accum, 100, 300, 2, 30);
+        let (deliver, accum, skipped) = diff_budget_decision(accum, 100, 300, 2, 30, false);
         assert!(deliver);
         assert_eq!((accum, skipped), (0, 0));
     }
 
     #[test]
     fn one_fully_changed_frame_is_worth_a_frame_on_its_own() {
-        let (deliver, _, _) = diff_budget_decision(0, u64::MAX, 300, 0, 30);
+        let (deliver, _, _) = diff_budget_decision(0, u64::MAX, 300, 0, 30, false);
         assert!(
             deliver,
             "an incomparable surface must not be swallowed by the budget"
@@ -713,19 +716,32 @@ mod diff_budget_tests {
 
     #[test]
     fn the_skip_guard_fires_even_if_nothing_ever_accumulates() {
-        let (deliver, _, _) = diff_budget_decision(0, 0, 300, 30, 30);
+        let (deliver, _, _) = diff_budget_decision(0, 0, 300, 30, 30, false);
         assert!(
             deliver,
             "30 idempotent frames in a row still need one delivered"
         );
-        let (deliver, accum, _) = diff_budget_decision(0, 0, 300, 29, 30);
+        let (deliver, accum, _) = diff_budget_decision(0, 0, 300, 29, 30, false);
         assert!(!deliver);
         assert_eq!(accum, 0);
     }
 
     #[test]
+    fn a_forced_change_is_never_deferred_by_the_budget() {
+        // A whole sampled chunk rewritten, or an incomparable surface, must buy a frame even when the
+        // accumulator is nowhere near the threshold.
+        let (deliver, accum, skipped) = diff_budget_decision(0, 1, 1_000_000, 0, 30, true);
+        assert!(deliver);
+        assert_eq!(
+            (accum, skipped),
+            (0, 0),
+            "a forced delivery restarts the counters"
+        );
+    }
+
+    #[test]
     fn the_accumulator_saturates_instead_of_wrapping() {
-        let (deliver, _, _) = diff_budget_decision(u64::MAX - 1, 5, u64::MAX, 0, 30);
+        let (deliver, _, _) = diff_budget_decision(u64::MAX - 1, 5, u64::MAX, 0, 30, false);
         assert!(deliver);
     }
 

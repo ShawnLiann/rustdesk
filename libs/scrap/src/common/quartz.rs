@@ -96,21 +96,22 @@ impl Capturer {
         let diff = match &self.prev_surface {
             // One handle on the compositor's own buffer cannot be compared with itself, and holding it
             // as the baseline would freeze the peer, so it counts as a full change.
-            Some(prev) if prev.same_buffer(frame) => u64::MAX,
+            Some(prev) if prev.same_buffer(frame) => quartz::DiffSample::EVERYTHING,
             Some(prev) => {
                 let diff = prev.sampled_diff(frame, crate::diff_sample(), self.diff_frame);
                 self.diff_frame = self.diff_frame.wrapping_add(1);
                 diff
             }
-            None => u64::MAX,
+            None => quartz::DiffSample::EVERYTHING,
         };
-        self.record_diff(diff);
+        self.record_diff(diff.estimated);
         let (deliver, accum, skipped) = crate::common::diff_budget_decision(
             self.diff_accum,
-            diff,
+            diff.estimated,
             threshold,
             self.diff_skipped,
             crate::diff_max_skip(),
+            diff.whole_chunk,
         );
         self.diff_accum = accum;
         self.diff_skipped = skipped;

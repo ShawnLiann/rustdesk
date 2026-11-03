@@ -151,6 +151,7 @@ jobs:
                    one_fully_changed_frame_is_worth_a_frame_on_its_own \
                    the_skip_guard_fires_even_if_nothing_ever_accumulates \
                    the_accumulator_saturates_instead_of_wrapping \
+                   a_forced_change_is_never_deferred_by_the_budget \
                    only_a_positive_number_turns_the_budget_on \
                    the_sample_density_and_the_skip_guard_fall_back_to_their_defaults \
                    the_sample_grid_is_page_aligned_and_density_one_reads_everything; do

@@ -171,23 +171,24 @@ impl RetainedSurface {
     ///
     /// The result is scaled up to the whole surface, so a threshold keeps its meaning when the
     /// sampling density changes. `u64::MAX` means "cannot compare, everything changed".
-    pub fn sampled_diff(&self, frame: &Frame, sample: usize, frame_index: u64) -> u64 {
+    pub fn sampled_diff(&self, frame: &Frame, sample: usize, frame_index: u64) -> DiffSample {
         let interval = diff_interval(sample);
         unsafe {
             if IOSurfaceLock(self.0, SURFACE_LOCK_READ_ONLY, ptr::null_mut()) != 0 {
-                return u64::MAX;
+                return DiffSample::EVERYTHING;
             }
             let len = IOSurfaceGetAllocSize(self.0);
             let other = frame.inner();
-            let diff = if len != other.len() {
+            let sample = if len != other.len() {
                 // A geometry change moves every byte that appeared or vanished.
-                u64::MAX
+                DiffSample::EVERYTHING
             } else if len == 0 {
-                0
+                DiffSample::NOTHING
             } else {
                 let a = slice::from_raw_parts(IOSurfaceGetBaseAddress(self.0) as *const u8, len);
                 let mut sampled = 0usize;
                 let mut differing = 0usize;
+                let mut whole_chunk = false;
                 let mut start = (frame_index as usize).wrapping_mul(DIFF_CHUNK) % interval;
                 while start < len {
                     let end = (start + DIFF_CHUNK).min(len);
@@ -195,16 +196,42 @@ impl RetainedSurface {
                     sampled += end - start;
                     // An equal chunk is one memcmp; only a changed one pays for counting bytes.
                     if x != y {
-                        differing += x.iter().zip(y.iter()).filter(|(p, q)| p != q).count();
+                        let changed = x.iter().zip(y.iter()).filter(|(p, q)| p != q).count();
+                        differing += changed;
+                        // A chunk rewritten end to end is a local change the eye cannot miss, so it
+                        // buys a frame even when the accumulated budget says not yet.
+                        whole_chunk |= changed == end - start;
                     }
                     start += interval;
                 }
-                scale_to_surface(differing, sampled, len)
+                DiffSample {
+                    estimated: scale_to_surface(differing, sampled, len),
+                    whole_chunk,
+                }
             };
             IOSurfaceUnlock(self.0, SURFACE_LOCK_READ_ONLY, ptr::null_mut());
-            diff
+            sample
         }
     }
+}
+
+/// The verdict of one sampled comparison: how much of the surface changed (estimated), and whether one
+/// whole chunk was rewritten, which is a change no threshold should swallow.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DiffSample {
+    pub estimated: u64,
+    pub whole_chunk: bool,
+}
+
+impl DiffSample {
+    pub const NOTHING: DiffSample = DiffSample {
+        estimated: 0,
+        whole_chunk: false,
+    };
+    pub const EVERYTHING: DiffSample = DiffSample {
+        estimated: u64::MAX,
+        whole_chunk: true,
+    };
 }
 
 /// Bytes compared per sample. A multiple of 4 KB and of 16 KB, so it is page-friendly on Intel
