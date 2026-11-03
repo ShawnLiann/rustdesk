@@ -141,7 +141,9 @@ impl Capturer {
             // as the baseline would freeze the peer, so it counts as a full change.
             Some(prev) if prev.same_buffer(frame) => quartz::DiffSample::EVERYTHING,
             Some(prev) => {
-                let diff = prev.sampled_diff(frame, crate::diff_sample(), self.diff_frame);
+                // A quiet picture is compared in full (no blind spot where it matters), a busy one is sampled.
+                let density = crate::common::sample_density(send_interval, tune);
+                let diff = prev.sampled_diff(frame, density, self.diff_frame);
                 self.diff_frame = self.diff_frame.wrapping_add(1);
                 diff
             }

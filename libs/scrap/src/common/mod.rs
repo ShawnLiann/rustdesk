@@ -413,18 +413,11 @@ fn parse_diff_sample_env(value: Option<&str>) -> usize {
     }
 }
 
+/// The configured density. `RD_DIFF_STRIDE` is still read as the old name for it, so an arm recorded
+/// against the previous build keeps meaning what it said.
 #[cfg(target_os = "macos")]
 pub fn diff_sample() -> usize {
-    use std::sync::OnceLock;
-    static SAMPLE: OnceLock<usize> = OnceLock::new();
-    *SAMPLE.get_or_init(|| {
-        // `RD_DIFF_STRIDE` was the old name for the same density; keep reading it so an arm recorded
-        // against the previous build keeps meaning what it said.
-        let value = std::env::var("RD_DIFF_SAMPLE")
-            .ok()
-            .or_else(|| std::env::var("RD_DIFF_STRIDE").ok());
-        parse_diff_sample_env(value.as_deref())
-    })
+    diff_tune().sample
 }
 
 /// `RD_DIFF_MAX_SKIP=<n>` is the starvation guard: after `n` frames skipped in a row the next one is
@@ -463,6 +456,9 @@ pub struct DiffTune {
     pub max_fps: f64,
     /// The rate a frozen screen falls back to. One frame a second keeps the peer from looking dead.
     pub min_fps: f64,
+    /// How much of the surface to compare while the picture is busy: one contiguous chunk in every
+    /// `sample`. A quiet picture is compared in full regardless (see `sample_density`).
+    pub sample: usize,
 }
 
 impl DiffTune {
@@ -471,6 +467,7 @@ impl DiffTune {
         probe_hz: 10.0,
         max_fps: 60.0,
         min_fps: 1.0,
+        sample: 16,
     };
 }
 
@@ -480,6 +477,7 @@ pub(crate) fn parse_diff_tune(
     probe_hz: Option<&str>,
     max_fps: Option<&str>,
     min_fps: Option<&str>,
+    sample: Option<&str>,
 ) -> DiffTune {
     let number = |value: Option<&str>, fallback: f64, low: f64, high: f64| -> f64 {
         match value.and_then(|v| v.trim().parse::<f64>().ok()) {
@@ -492,6 +490,7 @@ pub(crate) fn parse_diff_tune(
         probe_hz: number(probe_hz, DiffTune::DEFAULT.probe_hz, 0.2, 240.0),
         max_fps: number(max_fps, DiffTune::DEFAULT.max_fps, 1.0, 240.0),
         min_fps: number(min_fps, DiffTune::DEFAULT.min_fps, 0.2, 240.0),
+        sample: parse_diff_sample_env(sample),
     }
 }
 
@@ -505,6 +504,10 @@ pub fn diff_tune() -> DiffTune {
             std::env::var("RD_DIFF_PROBE_HZ").ok().as_deref(),
             std::env::var("RD_DIFF_MAX_FPS").ok().as_deref(),
             std::env::var("RD_DIFF_MIN_FPS").ok().as_deref(),
+            std::env::var("RD_DIFF_SAMPLE")
+                .ok()
+                .or_else(|| std::env::var("RD_DIFF_STRIDE").ok())
+                .as_deref(),
         )
     })
 }
@@ -542,6 +545,22 @@ pub(crate) fn smooth_interval_ms(previous: f64, target: f64) -> f64 {
     }
     let gain = if target < previous { ATTACK } else { RELEASE };
     previous + (target - previous) * gain
+}
+
+/// How much of the surface to compare right now.
+///
+/// A quiet picture is looked at rarely (`probe_hz`), so a full compare costs almost nothing per second
+/// and removes the sampling blind spot exactly when a blind spot matters most - a tiny change on an
+/// otherwise still screen is the case a 1/16 grid can miss. A busy picture is looked at up to the frame
+/// rate, where the sample buys the CPU. So the density follows the frame interval inversely, which
+/// keeps the cost per second roughly flat either way.
+pub(crate) fn sample_density(send_interval_ms: f64, tune: DiffTune) -> usize {
+    const QUIET_MS: f64 = 250.0; // 4 fps or slower counts as a quiet picture
+    if !send_interval_ms.is_finite() || send_interval_ms <= 0.0 || send_interval_ms >= QUIET_MS {
+        1
+    } else {
+        tune.sample
+    }
 }
 
 /// How long to wait before looking at the surface again: at the interval we would send at, but never
@@ -788,8 +807,8 @@ mod dedupe_zc_env_tests {
 mod diff_budget_tests {
     use super::{
         compare_interval_ms, diff_budget_decision, paced_interval_ms, parse_diff_accum_env,
-        parse_diff_max_skip_env, parse_diff_sample_env, parse_diff_tune, smooth_interval_ms,
-        DiffTune,
+        parse_diff_max_skip_env, parse_diff_sample_env, parse_diff_tune, sample_density,
+        smooth_interval_ms, DiffTune,
     };
 
     #[test]
@@ -905,17 +924,52 @@ mod diff_budget_tests {
 
     #[test]
     fn the_tuning_knobs_reject_nonsense_and_keep_their_defaults() {
-        let tune = parse_diff_tune(None, None, None, None);
+        let tune = parse_diff_tune(None, None, None, None, None);
         assert_eq!(tune, DiffTune::DEFAULT);
         for bad in ["0", "-1", "abc", "", "inf", "NaN"] {
-            let tune = parse_diff_tune(Some(bad), Some(bad), Some(bad), Some(bad));
+            let tune = parse_diff_tune(Some(bad), Some(bad), Some(bad), Some(bad), Some(bad));
             assert_eq!(tune, DiffTune::DEFAULT, "{bad:?} must fall back");
         }
-        let tune = parse_diff_tune(Some("500000"), Some("5"), Some("30"), Some("0.5"));
+        let tune = parse_diff_tune(
+            Some("500000"),
+            Some("5"),
+            Some("30"),
+            Some("0.5"),
+            Some("8"),
+        );
         assert_eq!(tune.soft, 500_000.0);
         assert_eq!(tune.probe_hz, 5.0);
         assert_eq!(tune.max_fps, 30.0);
         assert_eq!(tune.min_fps, 0.5);
+        assert_eq!(tune.sample, 8);
+    }
+
+    #[test]
+    fn a_quiet_picture_is_compared_in_full_and_a_busy_one_is_sampled() {
+        let tune = DiffTune::DEFAULT;
+        // 1 s interval (the floor rate) - full compare, so no region can hide.
+        assert_eq!(sample_density(1000.0, tune), 1);
+        // 33 ms (30 fps) - sampled, because at frame rate the CPU is what we are buying.
+        assert_eq!(sample_density(33.3, tune), tune.sample);
+        // Nonsense falls back to the full compare rather than dividing by it.
+        assert_eq!(sample_density(0.0, tune), 1);
+        assert_eq!(sample_density(f64::NAN, tune), 1);
+        // It follows the interval, not the clock: as the interval grows the sampling gets *denser*,
+        // so there is no combination of rates where a longer wait is also a sparser look.
+        let mut previous = usize::MAX;
+        for step in 0..20 {
+            let interval = 5.0 + step as f64 * 50.0;
+            let density = sample_density(interval, tune);
+            assert!(
+                density <= previous,
+                "density must not fall as the interval grows (was {previous}, now {density})"
+            );
+            previous = density;
+        }
+        assert_eq!(
+            previous, 1,
+            "the longest interval must end at a full compare"
+        );
     }
 
     #[test]

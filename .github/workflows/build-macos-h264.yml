@@ -154,6 +154,7 @@ jobs:
                    a_forced_change_is_never_deferred_by_the_budget \
                    a_busy_picture_is_paced_exactly_like_upstream_and_a_quiet_one_is_slowed \
                    the_interval_is_filtered_fast_up_and_slow_down \
+                   a_quiet_picture_is_compared_in_full_and_a_busy_one_is_sampled \
                    the_look_is_never_slower_than_the_probe_rate \
                    the_tuning_knobs_reject_nonsense_and_keep_their_defaults \
                    only_a_positive_number_turns_the_budget_on \
