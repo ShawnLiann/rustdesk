@@ -302,6 +302,56 @@ jobs:
         run: |
           cargo test --locked --features hwcodec,flutter,unix-file-copy-paste --lib client::io_loop::gpu_refuse_streak_tests:: -- --nocapture
 
+      # The switch gates are pure logic and the dmg build compiles no #[cfg(test)] code, so this step
+      # is the only place they run. The list is the same one the arm64 job uses: a switch missing from
+      # it reads as "not checked" in the best case.
+      - name: Test the switch gates without hwcodec
+        run: |
+          set -o pipefail
+          cargo test -p scrap --no-default-features _env -- --nocapture 2>&1 | tee env-tests.log
+          for t in no_dedupe_off_when_the_variable_is_absent \
+                   no_dedupe_only_the_exact_value_one_enables_it \
+                   off_when_the_variable_is_absent \
+                   only_the_exact_value_one_enables_it \
+                   lazy_bgra_stays_on_unless_switched_off \
+                   load_log_stays_on_unless_switched_off \
+                   no_repeat_only_the_exact_value_one_enables_it \
+                   nv12_capture_only_the_exact_value_one_enables_it \
+                   dedupe_zc_only_the_exact_value_one_enables_it \
+                   log_split_only_the_exact_value_one_enables_it; do
+            if ! grep -qE "test ([a-zA-Z0-9_:]+::)?$t \.\.\. ok" env-tests.log; then
+              echo "MISSING OR FAILED: $t"
+              exit 1
+            fi
+          done
+          grep "test result:" env-tests.log
+
+      # The change budget (RD_DIFF_ACCUM) and its sample grid are pure arithmetic, and a dmg build
+      # compiles no #[cfg(test)] code at all, so this step is the only place the rules run. `diff_` is
+      # the shared module prefix (`diff_budget_tests`, `diff_grid_tests`) and the greps name every test,
+      # so a filter that selects nothing fails here instead of passing quietly.
+      - name: Test the change budget
+        run: |
+          set -o pipefail
+          cargo test -p scrap --no-default-features diff_ -- --nocapture 2>&1 | tee diff-budget-tests.log
+          for t in the_budget_only_delivers_once_the_accumulated_change_covers_it \
+                   one_fully_changed_frame_is_worth_a_frame_on_its_own \
+                   the_skip_guard_fires_even_if_nothing_ever_accumulates \
+                   the_accumulator_saturates_instead_of_wrapping \
+                   a_forced_change_is_never_deferred_by_the_budget \
+                   a_frozen_screen_gets_the_floor_rate_and_a_big_change_earns_the_cap \
+                   the_look_is_never_slower_than_the_probe_rate \
+                   the_tuning_knobs_reject_nonsense_and_keep_their_defaults \
+                   only_a_positive_number_turns_the_budget_on \
+                   the_sample_density_and_the_skip_guard_fall_back_to_their_defaults \
+                   the_sample_grid_is_page_aligned_and_density_one_reads_everything; do
+            if ! grep -qE "test ([a-zA-Z0-9_:]+::)?$t \.\.\. ok" diff-budget-tests.log; then
+              echo "MISSING OR FAILED: $t"
+              exit 1
+            fi
+          done
+          grep "test result:" diff-budget-tests.log
+
       - name: Build rustdesk
         run: |
           MIN_MACOS_VERSION="12.3"
