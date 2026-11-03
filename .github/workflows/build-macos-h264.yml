@@ -139,6 +139,27 @@ jobs:
           done
           grep "test result:" env-tests.log
 
+      # The change budget (RD_DIFF_ACCUM) is pure arithmetic, and a dmg build compiles no
+      # #[cfg(test)] code at all, so this step is the only place the rule runs. `diff_budget` is the
+      # shared module name and the greps name every test, so a filter that selects nothing fails here
+      # instead of passing quietly.
+      - name: Test the change budget
+        run: |
+          set -o pipefail
+          cargo test -p scrap --no-default-features diff_budget -- --nocapture 2>&1 | tee diff-budget-tests.log
+          for t in the_budget_only_delivers_once_the_accumulated_change_covers_it \
+                   one_fully_changed_frame_is_worth_a_frame_on_its_own \
+                   the_skip_guard_fires_even_if_nothing_ever_accumulates \
+                   the_accumulator_saturates_instead_of_wrapping \
+                   only_a_positive_number_turns_the_budget_on \
+                   the_stride_and_the_skip_guard_fall_back_to_their_defaults; do
+            if ! grep -qE "test ([a-zA-Z0-9_:]+::)?$t \.\.\. ok" diff-budget-tests.log; then
+              echo "MISSING OR FAILED: $t"
+              exit 1
+            fi
+          done
+          grep "test result:" diff-budget-tests.log
+
       - name: Assert every runtime switch made it into the dmg
         run: |
           DYLIB=flutter/build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/liblibrustdesk.dylib
@@ -146,7 +167,8 @@ jobs:
           # Every switch this build is meant to expose. The name has to survive in the binary, or the
           # env var silently does nothing and the arm measures a path it was not meant to measure.
           for name in RD_ENCODE_PIXBUF RD_NO_DEDUPE RD_LAZY_BGRA RD_LOAD_LOG RD_NO_REPEAT \
-                      RD_PIXBUF_NV12 RD_DEDUPE_ZC RD_FORCE_CODEC RD_REFUSE_LIMIT RUSTDESK_VT_ZEROCOPY \
+                      RD_PIXBUF_NV12 RD_DEDUPE_ZC RD_DIFF_ACCUM RD_DIFF_STRIDE RD_DIFF_MAX_SKIP \
+                      RD_FORCE_CODEC RD_REFUSE_LIMIT RUSTDESK_VT_ZEROCOPY \
                       RD_LOG_SPLIT RD_VT_LATENCY RD_VT_FPS \
                       FlutterRgbaRendererPluginOnPixelBuffer; do
             n=$(strings -a "$DYLIB" | grep -cF "$name" || true)

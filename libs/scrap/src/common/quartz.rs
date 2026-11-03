@@ -26,6 +26,10 @@ pub struct Capturer {
     saved_raw_data: Vec<u8>, // for faster compare and copy
     /// The previous frame's surface, retained instead of copied, for `RD_DEDUPE_ZC=1`.
     prev_surface: Option<quartz::RetainedSurface>,
+    /// Change accumulated since the last delivered frame, for `RD_DIFF_ACCUM`.
+    diff_accum: u64,
+    /// Frames skipped in a row, for `RD_DIFF_MAX_SKIP`.
+    diff_skipped: usize,
 }
 
 impl Capturer {
@@ -52,6 +56,8 @@ impl Capturer {
             frame,
             saved_raw_data: Vec::new(),
             prev_surface: None,
+            diff_accum: 0,
+            diff_skipped: 0,
         })
     }
 
@@ -69,6 +75,36 @@ impl Capturer {
             self.prev_surface = Some(frame.retained_surface());
         }
         same
+    }
+
+    /// `RD_DIFF_ACCUM`: the same compare, but the answer is a budget rather than a verdict. Each frame
+    /// contributes the number of differing sampled bytes it finds; a frame is delivered only when the
+    /// total since the last delivered frame covers the threshold, and a delivery restarts it. The
+    /// retained reference therefore stays on the last *delivered* surface, so nothing that was skipped
+    /// is lost from the accounting.
+    fn dedupe_zc_budget(&mut self, frame: &quartz::Frame, threshold: u64) -> bool {
+        let diff = match &self.prev_surface {
+            // One handle on the compositor's own buffer cannot be compared with itself, and holding it
+            // as the baseline would freeze the peer, so it counts as a full change.
+            Some(prev) if prev.same_buffer(frame) => u64::MAX,
+            Some(prev) => prev.sampled_diff(frame, crate::diff_sample_stride()),
+            None => u64::MAX,
+        };
+        let (deliver, accum, skipped) = crate::common::diff_budget_decision(
+            self.diff_accum,
+            diff,
+            threshold,
+            self.diff_skipped,
+            crate::diff_max_skip(),
+        );
+        self.diff_accum = accum;
+        self.diff_skipped = skipped;
+        if deliver {
+            self.prev_surface = Some(frame.retained_surface());
+            false
+        } else {
+            true
+        }
     }
 
     pub fn width(&self) -> usize {
@@ -100,7 +136,10 @@ impl crate::TraitCapturer for Capturer {
                 if !crate::no_dedupe_enabled() {
                     let started = std::time::Instant::now();
                     let same = if crate::dedupe_zc_enabled() {
-                        self.dedupe_zc_equal(&frame)
+                        match crate::diff_accum_threshold() {
+                            Some(threshold) => self.dedupe_zc_budget(&frame, threshold),
+                            None => self.dedupe_zc_equal(&frame),
+                        }
                     } else {
                         crate::would_block_if_equal(&mut self.saved_raw_data, frame.inner())
                             .is_err()

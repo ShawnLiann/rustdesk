@@ -157,6 +157,36 @@ impl RetainedSurface {
             same
         }
     }
+    /// How many of the sampled bytes differ from `frame`, read where both surfaces already live.
+    /// `stride` is the gap between sampled positions, so the read is `1/stride` of a full comparison
+    /// and the returned count is in sampled bytes, not bytes. `u64::MAX` means "cannot compare, treat
+    /// as everything changed" - a verdict that costs a frame, never a frozen peer.
+    pub fn sampled_diff(&self, frame: &Frame, stride: usize) -> u64 {
+        let stride = stride.max(1);
+        unsafe {
+            if IOSurfaceLock(self.0, SURFACE_LOCK_READ_ONLY, ptr::null_mut()) != 0 {
+                return u64::MAX;
+            }
+            let len = IOSurfaceGetAllocSize(self.0);
+            let a = slice::from_raw_parts(IOSurfaceGetBaseAddress(self.0) as *const u8, len);
+            let b = frame.inner();
+            let n = len.min(b.len());
+            let mut diff = 0u64;
+            let mut i = 0usize;
+            while i < n {
+                if a[i] != b[i] {
+                    diff += 1;
+                }
+                i += stride;
+            }
+            if len != b.len() {
+                // A geometry change is a change of every byte that appeared or vanished.
+                diff += (len.max(b.len()) - n) as u64 / stride as u64 + 1;
+            }
+            IOSurfaceUnlock(self.0, SURFACE_LOCK_READ_ONLY, ptr::null_mut());
+            diff
+        }
+    }
 }
 
 impl Drop for RetainedSurface {

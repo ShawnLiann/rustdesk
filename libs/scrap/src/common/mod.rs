@@ -381,6 +381,82 @@ pub fn no_dedupe_enabled() -> bool {
     *ENABLED.get_or_init(|| parse_no_dedupe_env(std::env::var("RD_NO_DEDUPE").ok().as_deref()))
 }
 
+/// `RD_DIFF_ACCUM=<n>` makes the dedupe a change budget instead of an exact compare: every frame adds
+/// the number of differing *sampled* bytes it finds, a frame is delivered only once that running total
+/// reaches `n`, and delivering resets it to zero. Unset, `0`, or anything unparsable keeps the exact
+/// compare. The exact compare answers 0/1, so a clock second costs a full encode; this one answers
+/// "has enough of the picture changed to be worth a frame yet".
+#[cfg(any(target_os = "macos", test))]
+fn parse_diff_accum_env(value: Option<&str>) -> Option<u64> {
+    match value?.trim().parse::<u64>() {
+        Ok(n) if n > 0 => Some(n),
+        _ => None,
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn diff_accum_threshold() -> Option<u64> {
+    use std::sync::OnceLock;
+    static THRESHOLD: OnceLock<Option<u64>> = OnceLock::new();
+    *THRESHOLD.get_or_init(|| parse_diff_accum_env(std::env::var("RD_DIFF_ACCUM").ok().as_deref()))
+}
+
+/// `RD_DIFF_STRIDE=<n>` reads one byte in every `n` when measuring the change, so the compare costs
+/// `1/n` of a full one. `1` compares every byte, which makes the budget a strict superset of the exact
+/// compare.
+#[cfg(any(target_os = "macos", test))]
+fn parse_diff_stride_env(value: Option<&str>) -> usize {
+    match value.and_then(|v| v.trim().parse::<usize>().ok()) {
+        Some(n) if n > 0 => n,
+        _ => 64,
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn diff_sample_stride() -> usize {
+    use std::sync::OnceLock;
+    static STRIDE: OnceLock<usize> = OnceLock::new();
+    *STRIDE.get_or_init(|| parse_diff_stride_env(std::env::var("RD_DIFF_STRIDE").ok().as_deref()))
+}
+
+/// `RD_DIFF_MAX_SKIP=<n>` is the starvation guard: after `n` frames skipped in a row the next one is
+/// delivered whatever the budget says. Without it a screen whose only motion is a small scratched
+/// region could accumulate forever and never reach the threshold.
+#[cfg(any(target_os = "macos", test))]
+fn parse_diff_max_skip_env(value: Option<&str>) -> usize {
+    match value.and_then(|v| v.trim().parse::<usize>().ok()) {
+        Some(n) if n > 0 => n,
+        _ => 30,
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn diff_max_skip() -> usize {
+    use std::sync::OnceLock;
+    static MAX_SKIP: OnceLock<usize> = OnceLock::new();
+    *MAX_SKIP
+        .get_or_init(|| parse_diff_max_skip_env(std::env::var("RD_DIFF_MAX_SKIP").ok().as_deref()))
+}
+
+/// The whole rule in one place: spend the accumulated change budget, and deliver only when it covers
+/// the threshold or the skip guard fires. Returns `(deliver, next_accum, next_skipped)`; a delivery
+/// restarts both counters.
+#[cfg(any(target_os = "macos", test))]
+pub(crate) fn diff_budget_decision(
+    accum: u64,
+    diff: u64,
+    threshold: u64,
+    skipped: usize,
+    max_skip: usize,
+) -> (bool, u64, usize) {
+    let accum = accum.saturating_add(diff);
+    if accum >= threshold || skipped >= max_skip {
+        (true, 0, 0)
+    } else {
+        (false, accum, skipped + 1)
+    }
+}
+
 /// `RD_LAZY_BGRA=0` restores the eager surface copy taken at capture time, so an arm can price what
 /// materialising the BGRA buffer on first use buys. Unset, or anything but `0`, stays lazy.
 #[cfg(target_os = "macos")]
@@ -579,6 +655,75 @@ mod dedupe_zc_env_tests {
                 "{value:?} must keep the copy path"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod diff_budget_tests {
+    use super::{
+        diff_budget_decision, parse_diff_accum_env, parse_diff_max_skip_env, parse_diff_stride_env,
+    };
+
+    #[test]
+    fn the_budget_only_delivers_once_the_accumulated_change_covers_it() {
+        let (deliver, accum, skipped) = diff_budget_decision(0, 100, 300, 0, 30);
+        assert!(!deliver, "a third of the budget is not a frame");
+        assert_eq!((accum, skipped), (100, 1));
+
+        let (deliver, accum, _) = diff_budget_decision(accum, 100, 300, skipped, 30);
+        assert!(!deliver);
+        assert_eq!(accum, 200);
+
+        // The third frame crosses it, and a delivery restarts both counters.
+        let (deliver, accum, skipped) = diff_budget_decision(accum, 100, 300, 2, 30);
+        assert!(deliver);
+        assert_eq!((accum, skipped), (0, 0));
+    }
+
+    #[test]
+    fn one_fully_changed_frame_is_worth_a_frame_on_its_own() {
+        let (deliver, _, _) = diff_budget_decision(0, u64::MAX, 300, 0, 30);
+        assert!(
+            deliver,
+            "an incomparable surface must not be swallowed by the budget"
+        );
+    }
+
+    #[test]
+    fn the_skip_guard_fires_even_if_nothing_ever_accumulates() {
+        let (deliver, _, _) = diff_budget_decision(0, 0, 300, 30, 30);
+        assert!(
+            deliver,
+            "30 idempotent frames in a row still need one delivered"
+        );
+        let (deliver, accum, _) = diff_budget_decision(0, 0, 300, 29, 30);
+        assert!(!deliver);
+        assert_eq!(accum, 0);
+    }
+
+    #[test]
+    fn the_accumulator_saturates_instead_of_wrapping() {
+        let (deliver, _, _) = diff_budget_decision(u64::MAX - 1, 5, u64::MAX, 0, 30);
+        assert!(deliver);
+    }
+
+    #[test]
+    fn only_a_positive_number_turns_the_budget_on() {
+        assert_eq!(parse_diff_accum_env(None), None);
+        assert_eq!(parse_diff_accum_env(Some("0")), None);
+        assert_eq!(parse_diff_accum_env(Some("")), None);
+        assert_eq!(parse_diff_accum_env(Some("lots")), None);
+        assert_eq!(parse_diff_accum_env(Some(" 4096 ")), Some(4096));
+    }
+
+    #[test]
+    fn the_stride_and_the_skip_guard_fall_back_to_their_defaults() {
+        assert_eq!(parse_diff_stride_env(None), 64);
+        assert_eq!(parse_diff_stride_env(Some("0")), 64);
+        assert_eq!(parse_diff_stride_env(Some("1")), 1);
+        assert_eq!(parse_diff_max_skip_env(None), 30);
+        assert_eq!(parse_diff_max_skip_env(Some("-3")), 30);
+        assert_eq!(parse_diff_max_skip_env(Some("5")), 5);
     }
 }
 
