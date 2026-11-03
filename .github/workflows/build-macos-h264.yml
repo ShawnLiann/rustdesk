@@ -132,11 +132,14 @@ jobs:
                    nv12_capture_only_the_exact_value_one_enables_it \
                    dedupe_zc_only_the_exact_value_one_enables_it \
                    log_split_only_the_exact_value_one_enables_it; do
-            if ! grep -q "test $t ... ok" env-tests.log; then
+            # libtest prints the full module path ("test common::no_dedupe_env_tests::<name> ... ok"),
+            # so anchoring on "test <name>" matches nothing and fails the step on a suite that passed.
+            if ! grep -q "::${t} \.\.\. ok" env-tests.log; then
               echo "MISSING OR FAILED: $t"
-              exit 1
+              missing=1
             fi
           done
+          [ -z "$missing" ] || exit 1
           grep "test result:" env-tests.log
 
       - name: Assert every runtime switch made it into the dmg
