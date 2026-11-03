@@ -358,6 +358,22 @@ fn parse_no_dedupe_env(value: Option<&str>) -> bool {
     matches!(value, Some("1"))
 }
 
+/// `RD_DEDUPE_ZC=1` compares the new surface against a retained reference to the previous one
+/// instead of against a heap copy: same verdict, no 37 MB copy per frame. At 4096x2304 the copy is
+/// ~26 ms per frame, which on a nearly-static screen is the largest single item in the loop - larger
+/// than the encode it protects.
+#[cfg(target_os = "macos")]
+fn parse_dedupe_zc_env(value: Option<&str>) -> bool {
+    matches!(value, Some("1"))
+}
+
+#[cfg(target_os = "macos")]
+pub fn dedupe_zc_enabled() -> bool {
+    use std::sync::OnceLock;
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| parse_dedupe_zc_env(std::env::var("RD_DEDUPE_ZC").ok().as_deref()))
+}
+
 #[cfg(target_os = "macos")]
 pub fn no_dedupe_enabled() -> bool {
     use std::sync::OnceLock;
@@ -419,8 +435,7 @@ fn parse_nv12_capture_env(value: Option<&str>) -> bool {
 pub fn nv12_capture_env() -> bool {
     use std::sync::OnceLock;
     static ENABLED: OnceLock<bool> = OnceLock::new();
-    *ENABLED
-        .get_or_init(|| parse_nv12_capture_env(std::env::var("RD_PIXBUF_NV12").ok().as_deref()))
+    *ENABLED.get_or_init(|| parse_nv12_capture_env(std::env::var("RD_PIXBUF_NV12").ok().as_deref()))
 }
 
 /// Deliberately not cached: the negotiated codec can change mid-process, and with it whether the
@@ -545,6 +560,23 @@ mod nv12_capture_env_tests {
             assert!(
                 !parse_nv12_capture_env(Some(value)),
                 "{value:?} must keep the packed surface"
+            );
+        }
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod dedupe_zc_env_tests {
+    use super::parse_dedupe_zc_env;
+
+    #[test]
+    fn dedupe_zc_only_the_exact_value_one_enables_it() {
+        assert!(!parse_dedupe_zc_env(None));
+        assert!(parse_dedupe_zc_env(Some("1")));
+        for value in ["0", "", "true", "yes", "2", " 1", "1 "] {
+            assert!(
+                !parse_dedupe_zc_env(Some(value)),
+                "{value:?} must keep the copy path"
             );
         }
     }
@@ -911,6 +943,7 @@ mod pixbuf_fallback_tests {
         let mut yuv = Vec::new();
         let input = pixbuf_or_yuv(
             true,
+            true,
             std::ptr::null_mut,
             |dst| {
                 dst.extend_from_slice(&[9, 8, 7]);
@@ -932,6 +965,7 @@ mod pixbuf_fallback_tests {
         let mut yuv = Vec::new();
         let _ = pixbuf_or_yuv(
             true,
+            true,
             std::ptr::null_mut,
             |dst| {
                 dst.push(0);
@@ -943,6 +977,7 @@ mod pixbuf_fallback_tests {
         let mut yuv2 = Vec::new();
         let _ = pixbuf_or_yuv(
             false,
+            true,
             || panic!("not called"),
             |dst| {
                 dst.push(0);
@@ -967,6 +1002,7 @@ mod pixbuf_fallback_tests {
         let mut yuv = Vec::new();
         let input = pixbuf_or_yuv(
             false,
+            true,
             || panic!("the wrap must not be called when the gate is off"),
             |dst| {
                 dst.push(1);
@@ -977,5 +1013,27 @@ mod pixbuf_fallback_tests {
         .expect("conversion");
         assert!(matches!(input, EncodeInput::YUV(_)));
     }
-}
 
+    #[test]
+    fn a_biplanar_surface_is_dropped_instead_of_converted() {
+        let mut yuv = Vec::new();
+        let err = match pixbuf_or_yuv(
+            true,
+            false,
+            std::ptr::null_mut,
+            |dst| {
+                dst.push(0);
+                Ok(())
+            },
+            &mut yuv,
+        ) {
+            Ok(_) => panic!("a biplanar surface must not be handed to the BGRA converter"),
+            Err(err) => err,
+        };
+        assert!(
+            yuv.is_empty(),
+            "the conversion reads the luma plane as packed pixels and must not run"
+        );
+        assert!(err.to_string().contains("frame dropped"));
+    }
+}

@@ -130,6 +130,7 @@ jobs:
                    load_log_stays_on_unless_switched_off \
                    no_repeat_only_the_exact_value_one_enables_it \
                    nv12_capture_only_the_exact_value_one_enables_it \
+                   dedupe_zc_only_the_exact_value_one_enables_it \
                    log_split_only_the_exact_value_one_enables_it; do
             if ! grep -q "test $t ... ok" env-tests.log; then
               echo "MISSING OR FAILED: $t"
@@ -145,7 +146,7 @@ jobs:
           # Every switch this build is meant to expose. The name has to survive in the binary, or the
           # env var silently does nothing and the arm measures a path it was not meant to measure.
           for name in RD_ENCODE_PIXBUF RD_NO_DEDUPE RD_LAZY_BGRA RD_LOAD_LOG RD_NO_REPEAT \
-                      RD_PIXBUF_NV12 RD_FORCE_CODEC RD_REFUSE_LIMIT RUSTDESK_VT_ZEROCOPY \
+                      RD_PIXBUF_NV12 RD_DEDUPE_ZC RD_FORCE_CODEC RD_REFUSE_LIMIT RUSTDESK_VT_ZEROCOPY \
                       RD_LOG_SPLIT RD_VT_LATENCY RD_VT_FPS \
                       FlutterRgbaRendererPluginOnPixelBuffer; do
             n=$(strings -a "$DYLIB" | grep -cF "$name" || true)
@@ -289,7 +290,7 @@ jobs:
           # Every switch this build is meant to expose. The name has to survive in the binary, or the
           # env var silently does nothing and the arm measures a path it was not meant to measure.
           for name in RD_ENCODE_PIXBUF RD_NO_DEDUPE RD_LAZY_BGRA RD_LOAD_LOG RD_NO_REPEAT \
-                      RD_PIXBUF_NV12 RD_FORCE_CODEC RD_REFUSE_LIMIT RUSTDESK_VT_ZEROCOPY \
+                      RD_PIXBUF_NV12 RD_DEDUPE_ZC RD_FORCE_CODEC RD_REFUSE_LIMIT RUSTDESK_VT_ZEROCOPY \
                       RD_LOG_SPLIT RD_VT_LATENCY RD_VT_FPS \
                       FlutterRgbaRendererPluginOnPixelBuffer; do
             n=$(strings -a "$DYLIB" | grep -cF "$name" || true)

@@ -39,6 +39,12 @@ impl Frame {
         self.bgra_stride
     }
 
+    /// A handle that keeps this surface alive without holding a lock on it, for the next frame's
+    /// dedupe comparison.
+    pub fn retained_surface(&self) -> RetainedSurface {
+        unsafe { RetainedSurface::new(self.surface) }
+    }
+
     /// Prove which format the surface really carries, once per process. A capture that was asked for
     /// 420v and silently got ARGB8888 would otherwise be indistinguishable from "the change made no
     /// difference", which is the one conclusion an A/B arm must never reach by accident.
@@ -113,6 +119,51 @@ impl Drop for Frame {
 
             IOSurfaceDecrementUseCount(self.surface);
             CFRelease(self.surface);
+        }
+    }
+}
+
+/// A surface kept alive *without* holding a lock on it, so the dedupe compare can read the previous
+/// frame where it already lives instead of keeping a heap copy of it. Holding the read lock across
+/// frames would block the compositor from writing into its own pool buffer, which is a stall nobody
+/// could see in the counters; the lock is therefore taken only for the duration of a comparison.
+pub struct RetainedSurface(IOSurfaceRef);
+
+impl RetainedSurface {
+    pub unsafe fn new(surface: IOSurfaceRef) -> Self {
+        CFRetain(surface);
+        IOSurfaceIncrementUseCount(surface);
+        Self(surface)
+    }
+
+    /// Two handles on the same buffer cannot be compared: the compositor rewrites it in place, so
+    /// the answer would always be "identical" and the peer would freeze. The caller must treat the
+    /// same-buffer case as a difference and does not need this method to say so.
+    pub fn same_buffer(&self, frame: &Frame) -> bool {
+        self.0 == frame.surface
+    }
+
+    /// Byte equality over the whole allocation - the same span `would_block_if_equal` compares, so
+    /// the two dedupe paths agree on what "identical" means.
+    pub fn bytes_equal(&self, frame: &Frame) -> bool {
+        unsafe {
+            if IOSurfaceLock(self.0, SURFACE_LOCK_READ_ONLY, ptr::null_mut()) != 0 {
+                return false;
+            }
+            let len = IOSurfaceGetAllocSize(self.0);
+            let a = slice::from_raw_parts(IOSurfaceGetBaseAddress(self.0) as *const u8, len);
+            let same = frame.inner().len() == len && a == frame.inner();
+            IOSurfaceUnlock(self.0, SURFACE_LOCK_READ_ONLY, ptr::null_mut());
+            same
+        }
+    }
+}
+
+impl Drop for RetainedSurface {
+    fn drop(&mut self) {
+        unsafe {
+            IOSurfaceDecrementUseCount(self.0);
+            CFRelease(self.0);
         }
     }
 }

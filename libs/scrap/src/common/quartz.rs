@@ -1,8 +1,8 @@
 use crate::{quartz, Frame, Pixfmt};
 use hbb_common::log;
+use std::io;
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex, TryLockError};
-use std::{io, mem};
 
 /// Request the surface format the encode path can actually consume. The pixel-buffer path hands the
 /// surface itself to VideoToolbox, so a biplanar 420v surface saves the conversion VT would otherwise
@@ -24,6 +24,8 @@ pub struct Capturer {
     inner: quartz::Capturer,
     frame: Arc<Mutex<Option<quartz::Frame>>>,
     saved_raw_data: Vec<u8>, // for faster compare and copy
+    /// The previous frame's surface, retained instead of copied, for `RD_DEDUPE_ZC=1`.
+    prev_surface: Option<quartz::RetainedSurface>,
 }
 
 impl Capturer {
@@ -49,7 +51,24 @@ impl Capturer {
             inner,
             frame,
             saved_raw_data: Vec::new(),
+            prev_surface: None,
         })
+    }
+
+    /// "Same as the last frame", answered without a heap copy: the previous surface is still
+    /// referenced, so the two byte ranges can be compared where they already are. A compositor that
+    /// hands the same buffer back makes the question meaningless, and the answer there has to be
+    /// "different" - dropping a static frame recovers, presenting a stale one does not.
+    fn dedupe_zc_equal(&mut self, frame: &quartz::Frame) -> bool {
+        let same = match &self.prev_surface {
+            Some(prev) if prev.same_buffer(frame) => false,
+            Some(prev) => prev.bytes_equal(frame),
+            None => false,
+        };
+        if !same {
+            self.prev_surface = Some(frame.retained_surface());
+        }
+        same
     }
 
     pub fn width(&self) -> usize {
@@ -63,48 +82,47 @@ impl Capturer {
 
 impl crate::TraitCapturer for Capturer {
     fn frame<'a>(&'a mut self, _timeout_ms: std::time::Duration) -> io::Result<Frame<'a>> {
-        match self.frame.try_lock() {
-            Ok(mut handle) => {
-                let mut frame = None;
-                mem::swap(&mut frame, &mut handle);
+        // Take the frame out and drop the guard before touching `self`: the zero-copy dedupe compare
+        // needs `&mut self` to keep its reference to the previous surface, and holding the lock across
+        // that would be a borrow conflict - and a lock held longer than it needs to be.
+        let frame = {
+            let mut handle = match self.frame.try_lock() {
+                Ok(handle) => handle,
+                Err(TryLockError::WouldBlock) => return Err(io::ErrorKind::WouldBlock.into()),
+                Err(TryLockError::Poisoned(..)) => return Err(io::ErrorKind::Other.into()),
+            };
+            handle.take()
+        };
 
-                match frame {
-                    Some(frame) => {
-                        quartz::stats::bump(&quartz::stats::DEDUPE_CHECKED);
-                        if !crate::no_dedupe_enabled() {
-                            let started = std::time::Instant::now();
-                            let same = crate::would_block_if_equal(
-                                &mut self.saved_raw_data,
-                                frame.inner(),
-                            )
-                            .is_err();
-                            quartz::stats::add_micros(
-                                &quartz::stats::DEDUPE_MICROS,
-                                started.elapsed(),
-                            );
-                            if same {
-                                quartz::stats::bump(&quartz::stats::DEDUPE_BLOCKED);
-                                return Err(io::ErrorKind::WouldBlock.into());
-                            }
-                        }
-                        if !crate::lazy_bgra_enabled() {
-                            let _ = frame.bgra(self.height());
-                        }
-                        Ok(Frame::PixelBuffer(PixelBuffer {
-                            frame,
-                            data: PhantomData,
-                            width: self.width(),
-                            height: self.height(),
-                        }))
+        match frame {
+            Some(frame) => {
+                quartz::stats::bump(&quartz::stats::DEDUPE_CHECKED);
+                if !crate::no_dedupe_enabled() {
+                    let started = std::time::Instant::now();
+                    let same = if crate::dedupe_zc_enabled() {
+                        self.dedupe_zc_equal(&frame)
+                    } else {
+                        crate::would_block_if_equal(&mut self.saved_raw_data, frame.inner())
+                            .is_err()
+                    };
+                    quartz::stats::add_micros(&quartz::stats::DEDUPE_MICROS, started.elapsed());
+                    if same {
+                        quartz::stats::bump(&quartz::stats::DEDUPE_BLOCKED);
+                        return Err(io::ErrorKind::WouldBlock.into());
                     }
-
-                    None => Err(io::ErrorKind::WouldBlock.into()),
                 }
+                if !crate::lazy_bgra_enabled() {
+                    let _ = frame.bgra(self.height());
+                }
+                Ok(Frame::PixelBuffer(PixelBuffer {
+                    frame,
+                    data: PhantomData,
+                    width: self.width(),
+                    height: self.height(),
+                }))
             }
 
-            Err(TryLockError::WouldBlock) => Err(io::ErrorKind::WouldBlock.into()),
-
-            Err(TryLockError::Poisoned(..)) => Err(io::ErrorKind::Other.into()),
+            None => Err(io::ErrorKind::WouldBlock.into()),
         }
     }
 }
