@@ -152,6 +152,9 @@ jobs:
                    the_skip_guard_fires_even_if_nothing_ever_accumulates \
                    the_accumulator_saturates_instead_of_wrapping \
                    a_forced_change_is_never_deferred_by_the_budget \
+                   a_frozen_screen_gets_the_floor_rate_and_a_big_change_earns_the_cap \
+                   the_look_is_never_slower_than_the_probe_rate \
+                   the_tuning_knobs_reject_nonsense_and_keep_their_defaults \
                    only_a_positive_number_turns_the_budget_on \
                    the_sample_density_and_the_skip_guard_fall_back_to_their_defaults \
                    the_sample_grid_is_page_aligned_and_density_one_reads_everything; do
@@ -170,7 +173,7 @@ jobs:
           # env var silently does nothing and the arm measures a path it was not meant to measure.
           for name in RD_ENCODE_PIXBUF RD_NO_DEDUPE RD_LAZY_BGRA RD_LOAD_LOG RD_NO_REPEAT \
                       RD_PIXBUF_NV12 RD_DEDUPE_ZC RD_DIFF_ACCUM RD_DIFF_SAMPLE RD_DIFF_MAX_SKIP \
-                      RD_DIFF_LOG \
+                      RD_DIFF_LOG RD_DIFF_SOFT RD_DIFF_PROBE_HZ RD_DIFF_MAX_FPS RD_DIFF_MIN_FPS \
                       RD_FORCE_CODEC RD_REFUSE_LIMIT RUSTDESK_VT_ZEROCOPY \
                       RD_LOG_SPLIT RD_VT_LATENCY RD_VT_FPS \
                       FlutterRgbaRendererPluginOnPixelBuffer; do

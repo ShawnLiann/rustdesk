@@ -32,6 +32,11 @@ pub struct Capturer {
     diff_skipped: usize,
     /// Frames compared since this capturer started; rotates the sample grid so no region can hide.
     diff_frame: u64,
+    /// When the surface was last compared and last delivered, and the smoothed change rate that sets
+    /// both the compare rate and the delivery rate.
+    diff_compared: Option<std::time::Instant>,
+    diff_sent: Option<std::time::Instant>,
+    diff_rate: f64,
     /// Coarse log2 histogram of the estimated changed bytes, for `RD_DIFF_LOG`.
     diff_hist: [u32; 40],
     diff_samples: u32,
@@ -65,6 +70,9 @@ impl Capturer {
             diff_accum: 0,
             diff_skipped: 0,
             diff_frame: 0,
+            diff_compared: None,
+            diff_sent: None,
+            diff_rate: 0.0,
             diff_hist: [0; 40],
             diff_samples: 0,
             diff_window: None,
@@ -93,6 +101,25 @@ impl Capturer {
     /// retained reference therefore stays on the last *delivered* surface, so nothing that was skipped
     /// is lost from the accounting.
     fn dedupe_zc_budget(&mut self, frame: &quartz::Frame, threshold: u64) -> bool {
+        let now = std::time::Instant::now();
+        let tune = crate::diff_tune();
+
+        // Only look when a look could change the answer. Comparing every frame the compositor hands us
+        // is what made a static 4K screen cost ~970 ms/s of one core; at the probe rate the idle cost is
+        // probe_hz compares per second instead of display rate.
+        let target = crate::common::target_fps(self.diff_rate, tune);
+        let compare_ms = crate::common::compare_interval_ms(target, tune);
+        if let Some(last) = self.diff_compared {
+            if now.duration_since(last).as_secs_f64() * 1000.0 < compare_ms {
+                return true;
+            }
+        }
+        let elapsed = self
+            .diff_compared
+            .map(|last| now.duration_since(last).as_secs_f64())
+            .unwrap_or(0.0);
+        self.diff_compared = Some(now);
+
         let diff = match &self.prev_surface {
             // One handle on the compositor's own buffer cannot be compared with itself, and holding it
             // as the baseline would freeze the peer, so it counts as a full change.
@@ -104,7 +131,19 @@ impl Capturer {
             }
             None => quartz::DiffSample::EVERYTHING,
         };
-        let (deliver, accum, skipped) = crate::common::diff_budget_decision(
+        if elapsed > 0.0 && diff.estimated != u64::MAX {
+            // Bytes of change per second, smoothed so one loud frame does not ratchet the rate up.
+            let instant = diff.estimated as f64 / elapsed;
+            self.diff_rate = if self.diff_rate == 0.0 {
+                instant
+            } else {
+                self.diff_rate * 0.7 + instant * 0.3
+            };
+        }
+
+        // The hard verdict: the change since the last delivery reached the threshold, the skip guard
+        // fired, or one whole chunk was rewritten. Nothing rate-limits a hard delivery.
+        let (hard, accum, skipped) = crate::common::diff_budget_decision(
             self.diff_accum,
             diff.estimated,
             threshold,
@@ -112,11 +151,21 @@ impl Capturer {
             crate::diff_max_skip(),
             diff.whole_chunk,
         );
-        self.record_diff(diff.estimated, accum, skipped);
-        self.diff_accum = accum;
-        self.diff_skipped = skipped;
+
+        // The soft verdict: below the threshold the frame rate follows the change rate, so we deliver
+        // when the target rate the change has earned says a frame is due. A still picture sits on the
+        // floor rate and still gets a frame every `1 / min_fps`, which is what keeps the peer alive.
+        let due = self
+            .diff_sent
+            .map(|last| now.duration_since(last).as_secs_f64() >= 1.0 / target)
+            .unwrap_or(true);
+        let deliver = hard || due;
+        self.record_diff(diff.estimated, accum, skipped, target);
+        self.diff_accum = if deliver { 0 } else { accum };
+        self.diff_skipped = if deliver { 0 } else { skipped };
         if deliver {
             self.prev_surface = Some(frame.retained_surface());
+            self.diff_sent = Some(now);
             false
         } else {
             true
@@ -126,7 +175,7 @@ impl Capturer {
     /// `RD_DIFF_LOG=1` prints, once every five seconds, what the budget is being fed: the estimated
     /// changed bytes per frame as a coarse distribution. Choosing a threshold from a distribution
     /// beats guessing one, and the line costs nothing when the switch is off.
-    fn record_diff(&mut self, diff: u64, accum: u64, skipped: usize) {
+    fn record_diff(&mut self, diff: u64, accum: u64, skipped: usize, target: f64) {
         const LOG_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
         if diff == u64::MAX {
             return;
@@ -146,14 +195,16 @@ impl Capturer {
         if crate::diff_log_enabled() && self.diff_samples > 0 {
             let (p50, p90, max) = self.diff_percentiles();
             log::info!(
-                "[DIFF] {:.1}s n={} sample=1/{} p50={} p90={} max={} accum={} skipped={} \
-                 (estimated changed bytes/frame)",
+                "[DIFF] {:.1}s n={} sample=1/{} p50={} p90={} max={} rate={:.0}/s target={:.1}fps \
+                 accum={} skipped={} (estimated changed bytes/frame)",
                 now.duration_since(started).as_secs_f32(),
                 self.diff_samples,
                 crate::diff_sample(),
                 p50,
                 p90,
                 max,
+                self.diff_rate,
+                target,
                 accum,
                 skipped
             );

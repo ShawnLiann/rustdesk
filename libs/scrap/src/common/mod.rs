@@ -450,6 +450,88 @@ pub fn diff_max_skip() -> usize {
 /// the threshold or the skip guard fires. Returns `(deliver, next_accum, next_skipped)`; a delivery
 /// restarts both counters.
 #[cfg(any(target_os = "macos", test))]
+/// The knobs the change-driven frame rate is built from, read once.
+#[cfg(any(target_os = "macos", test))]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DiffTune {
+    /// Estimated bytes/second of change at which the cap is earned. Below it the rate is proportional.
+    pub soft: f64,
+    /// How often the surface may be compared while the picture is still, in Hz. This is the idle CPU
+    /// cost: at 10 Hz a 4K compare that costs ~1 ms runs 10 times a second instead of 32-75.
+    pub probe_hz: f64,
+    /// Highest rate the change alone can earn; the client's own request and the host loop still cap it.
+    pub max_fps: f64,
+    /// The rate a frozen screen falls back to. One frame a second keeps the peer from looking dead.
+    pub min_fps: f64,
+}
+
+impl DiffTune {
+    pub const DEFAULT: DiffTune = DiffTune {
+        soft: 2_000_000.0,
+        probe_hz: 10.0,
+        max_fps: 60.0,
+        min_fps: 1.0,
+    };
+}
+
+#[cfg(any(target_os = "macos", test))]
+pub(crate) fn parse_diff_tune(
+    soft: Option<&str>,
+    probe_hz: Option<&str>,
+    max_fps: Option<&str>,
+    min_fps: Option<&str>,
+) -> DiffTune {
+    let number = |value: Option<&str>, fallback: f64, low: f64, high: f64| -> f64 {
+        match value.and_then(|v| v.trim().parse::<f64>().ok()) {
+            Some(n) if n > 0.0 && n.is_finite() => n.clamp(low, high),
+            _ => fallback,
+        }
+    };
+    DiffTune {
+        soft: number(soft, DiffTune::DEFAULT.soft, 1.0, 1e12),
+        probe_hz: number(probe_hz, DiffTune::DEFAULT.probe_hz, 0.2, 240.0),
+        max_fps: number(max_fps, DiffTune::DEFAULT.max_fps, 1.0, 240.0),
+        min_fps: number(min_fps, DiffTune::DEFAULT.min_fps, 0.2, 240.0),
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn diff_tune() -> DiffTune {
+    use std::sync::OnceLock;
+    static TUNE: OnceLock<DiffTune> = OnceLock::new();
+    *TUNE.get_or_init(|| {
+        parse_diff_tune(
+            std::env::var("RD_DIFF_SOFT").ok().as_deref(),
+            std::env::var("RD_DIFF_PROBE_HZ").ok().as_deref(),
+            std::env::var("RD_DIFF_MAX_FPS").ok().as_deref(),
+            std::env::var("RD_DIFF_MIN_FPS").ok().as_deref(),
+        )
+    })
+}
+
+/// The rate a change of `rate` bytes/second has earned: `min_fps` when nothing moves, climbing to
+/// `max_fps` once the change reaches `soft`. Straight line rather than a step, so a small change buys a
+/// proportionally small number of frames instead of either none or all of them.
+pub(crate) fn target_fps(rate: f64, tune: DiffTune) -> f64 {
+    if !rate.is_finite() || rate <= 0.0 {
+        return tune.min_fps;
+    }
+    let earned = (rate / tune.soft).clamp(0.0, 1.0);
+    let span = (tune.max_fps - tune.min_fps).max(0.0);
+    (tune.min_fps + span * earned).clamp(
+        tune.min_fps.min(tune.max_fps),
+        tune.max_fps.max(tune.min_fps),
+    )
+}
+
+/// How long to wait before looking at the surface again. The compare happens at the frame rate the
+/// change has earned, but never slower than `probe_hz` - a frozen screen still needs to be checked
+/// often enough that a real change is noticed within ~`1000 / probe_hz` ms.
+pub(crate) fn compare_interval_ms(target_fps: f64, tune: DiffTune) -> f64 {
+    let looking_at = target_fps.max(tune.probe_hz);
+    1000.0 / looking_at.max(0.2)
+}
+
 pub(crate) fn diff_budget_decision(
     accum: u64,
     diff: u64,
@@ -686,7 +768,8 @@ mod dedupe_zc_env_tests {
 #[cfg(test)]
 mod diff_budget_tests {
     use super::{
-        diff_budget_decision, parse_diff_accum_env, parse_diff_max_skip_env, parse_diff_sample_env,
+        compare_interval_ms, diff_budget_decision, parse_diff_accum_env, parse_diff_max_skip_env,
+        parse_diff_sample_env, parse_diff_tune, target_fps, DiffTune,
     };
 
     #[test]
@@ -724,6 +807,62 @@ mod diff_budget_tests {
         let (deliver, accum, _) = diff_budget_decision(0, 0, 300, 29, 30, false);
         assert!(!deliver);
         assert_eq!(accum, 0);
+    }
+
+    #[test]
+    fn a_frozen_screen_gets_the_floor_rate_and_a_big_change_earns_the_cap() {
+        let tune = DiffTune::DEFAULT;
+        assert_eq!(target_fps(0.0, tune), tune.min_fps);
+        assert_eq!(target_fps(-5.0, tune), tune.min_fps, "no negative rates");
+        assert_eq!(target_fps(f64::NAN, tune), tune.min_fps);
+        assert_eq!(target_fps(tune.soft, tune), tune.max_fps);
+        assert_eq!(
+            target_fps(tune.soft * 10.0, tune),
+            tune.max_fps,
+            "no overshoot"
+        );
+        let half = target_fps(tune.soft / 2.0, tune);
+        assert!(
+            half > tune.min_fps && half < tune.max_fps,
+            "{half} must sit between"
+        );
+        // Monotonic: more change never earns fewer frames.
+        let mut previous = 0.0;
+        for step in 0..20 {
+            let fps = target_fps(tune.soft * step as f64 / 10.0, tune);
+            assert!(fps >= previous);
+            previous = fps;
+        }
+    }
+
+    #[test]
+    fn the_look_is_never_slower_than_the_probe_rate() {
+        let tune = DiffTune::DEFAULT;
+        // A frozen screen earns the floor rate, but we still look `probe_hz` times a second.
+        assert_eq!(
+            compare_interval_ms(tune.min_fps, tune),
+            1000.0 / tune.probe_hz
+        );
+        // Once the change earns more than the probe rate, the frame rate wins.
+        assert_eq!(
+            compare_interval_ms(tune.max_fps, tune),
+            1000.0 / tune.max_fps
+        );
+    }
+
+    #[test]
+    fn the_tuning_knobs_reject_nonsense_and_keep_their_defaults() {
+        let tune = parse_diff_tune(None, None, None, None);
+        assert_eq!(tune, DiffTune::DEFAULT);
+        for bad in ["0", "-1", "abc", "", "inf", "NaN"] {
+            let tune = parse_diff_tune(Some(bad), Some(bad), Some(bad), Some(bad));
+            assert_eq!(tune, DiffTune::DEFAULT, "{bad:?} must fall back");
+        }
+        let tune = parse_diff_tune(Some("500000"), Some("5"), Some("30"), Some("0.5"));
+        assert_eq!(tune.soft, 500_000.0);
+        assert_eq!(tune.probe_hz, 5.0);
+        assert_eq!(tune.max_fps, 30.0);
+        assert_eq!(tune.min_fps, 0.5);
     }
 
     #[test]
