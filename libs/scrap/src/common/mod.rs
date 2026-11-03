@@ -401,22 +401,30 @@ pub fn diff_accum_threshold() -> Option<u64> {
     *THRESHOLD.get_or_init(|| parse_diff_accum_env(std::env::var("RD_DIFF_ACCUM").ok().as_deref()))
 }
 
-/// `RD_DIFF_STRIDE=<n>` reads one byte in every `n` when measuring the change, so the compare costs
-/// `1/n` of a full one. `1` compares every byte, which makes the budget a strict superset of the exact
-/// compare.
+/// `RD_DIFF_SAMPLE=<n>` compares one contiguous 16 KB chunk out of every `n` of them, i.e. `1/n` of the
+/// surface. Chunks rather than every n-th byte: a byte stride scatters one read per 64 bytes across
+/// 37 MB, and measured here that costs the same as comparing the whole thing, while contiguous chunks
+/// stay inside cache lines the CPU already fetched. `1` compares everything.
 #[cfg(any(target_os = "macos", test))]
-fn parse_diff_stride_env(value: Option<&str>) -> usize {
+fn parse_diff_sample_env(value: Option<&str>) -> usize {
     match value.and_then(|v| v.trim().parse::<usize>().ok()) {
-        Some(n) if n > 0 => n,
-        _ => 64,
+        Some(n) if n > 0 => n.min(1024),
+        _ => 16,
     }
 }
 
 #[cfg(target_os = "macos")]
-pub fn diff_sample_stride() -> usize {
+pub fn diff_sample() -> usize {
     use std::sync::OnceLock;
-    static STRIDE: OnceLock<usize> = OnceLock::new();
-    *STRIDE.get_or_init(|| parse_diff_stride_env(std::env::var("RD_DIFF_STRIDE").ok().as_deref()))
+    static SAMPLE: OnceLock<usize> = OnceLock::new();
+    *SAMPLE.get_or_init(|| {
+        // `RD_DIFF_STRIDE` was the old name for the same density; keep reading it so an arm recorded
+        // against the previous build keeps meaning what it said.
+        let value = std::env::var("RD_DIFF_SAMPLE")
+            .ok()
+            .or_else(|| std::env::var("RD_DIFF_STRIDE").ok());
+        parse_diff_sample_env(value.as_deref())
+    })
 }
 
 /// `RD_DIFF_MAX_SKIP=<n>` is the starvation guard: after `n` frames skipped in a row the next one is
@@ -483,6 +491,20 @@ pub fn load_log_enabled() -> bool {
     use std::sync::OnceLock;
     static ENABLED: OnceLock<bool> = OnceLock::new();
     *ENABLED.get_or_init(|| parse_load_log_env(std::env::var("RD_LOAD_LOG").ok().as_deref()))
+}
+
+/// `RD_DIFF_LOG=1` prints the change-budget distribution once every five seconds. Off by default: a
+/// build that is not being tuned keeps the log byte-identical to what it was before the budget existed,
+/// which is the only way an A/B on the log itself stays honest.
+fn parse_diff_log_env(value: Option<&str>) -> bool {
+    matches!(value.map(str::trim), Some("1"))
+}
+
+#[cfg(target_os = "macos")]
+pub fn diff_log_enabled() -> bool {
+    use std::sync::OnceLock;
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| parse_diff_log_env(std::env::var("RD_DIFF_LOG").ok().as_deref()))
 }
 
 /// `RD_NO_REPEAT=1` stops the WouldBlock arm from re-encoding the previous frame, so both the cost
@@ -661,7 +683,7 @@ mod dedupe_zc_env_tests {
 #[cfg(test)]
 mod diff_budget_tests {
     use super::{
-        diff_budget_decision, parse_diff_accum_env, parse_diff_max_skip_env, parse_diff_stride_env,
+        diff_budget_decision, parse_diff_accum_env, parse_diff_max_skip_env, parse_diff_sample_env,
     };
 
     #[test]
@@ -717,13 +739,45 @@ mod diff_budget_tests {
     }
 
     #[test]
-    fn the_stride_and_the_skip_guard_fall_back_to_their_defaults() {
-        assert_eq!(parse_diff_stride_env(None), 64);
-        assert_eq!(parse_diff_stride_env(Some("0")), 64);
-        assert_eq!(parse_diff_stride_env(Some("1")), 1);
+    fn the_sample_density_and_the_skip_guard_fall_back_to_their_defaults() {
+        assert_eq!(parse_diff_sample_env(None), 16);
+        assert_eq!(parse_diff_sample_env(Some("0")), 16);
+        assert_eq!(parse_diff_sample_env(Some("1")), 1);
+        assert_eq!(parse_diff_sample_env(Some("99999")), 1024);
         assert_eq!(parse_diff_max_skip_env(None), 30);
         assert_eq!(parse_diff_max_skip_env(Some("-3")), 30);
         assert_eq!(parse_diff_max_skip_env(Some("5")), 5);
+    }
+}
+
+/// The grid arithmetic lives in `quartz`, which only exists on macOS, so this test travels with it.
+#[cfg(all(test, target_os = "macos"))]
+mod diff_grid_tests {
+    #[test]
+    fn the_sample_grid_is_page_aligned_and_density_one_reads_everything() {
+        use crate::quartz::{diff_interval, scale_to_surface, DIFF_CHUNK};
+        assert_eq!(DIFF_CHUNK % 4096, 0, "multiple of the Intel page size");
+        assert_eq!(
+            DIFF_CHUNK % 16384,
+            0,
+            "multiple of the Apple Silicon page size"
+        );
+        assert_eq!(
+            diff_interval(1),
+            DIFF_CHUNK,
+            "density 1 compares every chunk"
+        );
+        assert_eq!(diff_interval(16), 16 * DIFF_CHUNK);
+        assert_eq!(diff_interval(0), DIFF_CHUNK, "zero must not divide by zero");
+        // Scaling back to the whole surface keeps a threshold meaningful across densities.
+        assert_eq!(scale_to_surface(1234, 4096, 4096), 1234);
+        assert_eq!(scale_to_surface(100, 4096, 65536), 1600);
+        assert_eq!(
+            scale_to_surface(0, 0, 4096),
+            0,
+            "nothing sampled is nothing changed"
+        );
+        assert_eq!(scale_to_surface(5, 4096, 0), 0);
     }
 }
 

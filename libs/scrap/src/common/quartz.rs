@@ -30,6 +30,12 @@ pub struct Capturer {
     diff_accum: u64,
     /// Frames skipped in a row, for `RD_DIFF_MAX_SKIP`.
     diff_skipped: usize,
+    /// Frames compared since this capturer started; rotates the sample grid so no region can hide.
+    diff_frame: u64,
+    /// Coarse log2 histogram of the estimated changed bytes, for `RD_DIFF_LOG`.
+    diff_hist: [u32; 40],
+    diff_samples: u32,
+    diff_window: Option<std::time::Instant>,
 }
 
 impl Capturer {
@@ -58,6 +64,10 @@ impl Capturer {
             prev_surface: None,
             diff_accum: 0,
             diff_skipped: 0,
+            diff_frame: 0,
+            diff_hist: [0; 40],
+            diff_samples: 0,
+            diff_window: None,
         })
     }
 
@@ -87,9 +97,14 @@ impl Capturer {
             // One handle on the compositor's own buffer cannot be compared with itself, and holding it
             // as the baseline would freeze the peer, so it counts as a full change.
             Some(prev) if prev.same_buffer(frame) => u64::MAX,
-            Some(prev) => prev.sampled_diff(frame, crate::diff_sample_stride()),
+            Some(prev) => {
+                let diff = prev.sampled_diff(frame, crate::diff_sample(), self.diff_frame);
+                self.diff_frame = self.diff_frame.wrapping_add(1);
+                diff
+            }
             None => u64::MAX,
         };
+        self.record_diff(diff);
         let (deliver, accum, skipped) = crate::common::diff_budget_decision(
             self.diff_accum,
             diff,
@@ -105,6 +120,60 @@ impl Capturer {
         } else {
             true
         }
+    }
+
+    /// `RD_DIFF_LOG=1` prints, once every five seconds, what the budget is being fed: the estimated
+    /// changed bytes per frame as a coarse distribution. Choosing a threshold from a distribution
+    /// beats guessing one, and the line costs nothing when the switch is off.
+    fn record_diff(&mut self, diff: u64) {
+        const LOG_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
+        if diff == u64::MAX {
+            return;
+        }
+        let bucket = if diff == 0 {
+            0
+        } else {
+            (64 - diff.leading_zeros() as usize).min(self.diff_hist.len() - 1)
+        };
+        self.diff_hist[bucket] = self.diff_hist[bucket].saturating_add(1);
+        self.diff_samples = self.diff_samples.saturating_add(1);
+        let now = std::time::Instant::now();
+        let started = *self.diff_window.get_or_insert(now);
+        if now.duration_since(started) < LOG_EVERY {
+            return;
+        }
+        if crate::diff_log_enabled() && self.diff_samples > 0 {
+            let (p50, p90, max) = self.diff_percentiles();
+            log::info!(
+                "[DIFF] {:.1}s n={} sample=1/{} p50={} p90={} max={} (estimated changed bytes/frame)",
+                now.duration_since(started).as_secs_f32(),
+                self.diff_samples,
+                crate::diff_sample(),
+                p50,
+                p90,
+                max
+            );
+        }
+        self.diff_hist = [0; 40];
+        self.diff_samples = 0;
+        self.diff_window = Some(now);
+    }
+
+    /// Lower bound of the bucket a percentile falls in: good enough to pick a threshold, and honest
+    /// about being an order-of-magnitude estimate.
+    fn diff_percentiles(&self) -> (u64, u64, u64) {
+        let total: u32 = self.diff_hist.iter().sum();
+        let at = |share: f32| -> u64 {
+            let mut seen = 0u32;
+            for (bucket, count) in self.diff_hist.iter().enumerate() {
+                seen = seen.saturating_add(*count);
+                if (seen as f32) >= total as f32 * share {
+                    return if bucket == 0 { 0 } else { 1u64 << (bucket - 1) };
+                }
+            }
+            0
+        };
+        (at(0.5), at(0.9), at(1.0))
     }
 
     pub fn width(&self) -> usize {

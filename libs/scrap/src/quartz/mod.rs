@@ -2,7 +2,7 @@ pub use self::capturer::Capturer;
 pub use self::config::Config;
 pub use self::display::Display;
 pub use self::ffi::{CGError, PixelFormat};
-pub use self::frame::{Frame, RetainedSurface};
+pub use self::frame::{diff_interval, scale_to_surface, Frame, RetainedSurface, DIFF_CHUNK};
 
 /// Counters for one question: does the byte compare in `common::quartz` still earn its per-frame
 /// surface copy, given that the compositor already reports `FrameIdle` when nothing changed?
