@@ -37,6 +37,8 @@ pub struct Capturer {
     diff_compared: Option<std::time::Instant>,
     diff_sent: Option<std::time::Instant>,
     diff_rate: f64,
+    /// The filtered send interval in ms: the law's answer after the low pass.
+    diff_interval_ms: f64,
     /// Coarse log2 histogram of the estimated changed bytes, for `RD_DIFF_LOG`.
     diff_hist: [u32; 40],
     diff_samples: u32,
@@ -73,6 +75,7 @@ impl Capturer {
             diff_compared: None,
             diff_sent: None,
             diff_rate: 0.0,
+            diff_interval_ms: 0.0,
             diff_hist: [0; 40],
             diff_samples: 0,
             diff_window: None,
@@ -100,15 +103,28 @@ impl Capturer {
     /// total since the last delivered frame covers the threshold, and a delivery restarts it. The
     /// retained reference therefore stays on the last *delivered* surface, so nothing that was skipped
     /// is lost from the accounting.
-    fn dedupe_zc_budget(&mut self, frame: &quartz::Frame, threshold: u64) -> bool {
+    fn dedupe_zc_budget(
+        &mut self,
+        frame: &quartz::Frame,
+        threshold: u64,
+        spf: std::time::Duration,
+    ) -> bool {
         let now = std::time::Instant::now();
         let tune = crate::diff_tune();
 
         // Only look when a look could change the answer. Comparing every frame the compositor hands us
         // is what made a static 4K screen cost ~970 ms/s of one core; at the probe rate the idle cost is
         // probe_hz compares per second instead of display rate.
-        let target = crate::common::target_fps(self.diff_rate, tune);
-        let compare_ms = crate::common::compare_interval_ms(target, tune);
+        //
+        // The interval rides on the caller's own `spf` (client request merged with VideoQoS), so a busy
+        // picture is paced at exactly the cadence upstream would have used, and only a quiet one is
+        // slowed. The law's output is filtered before it is used: fast to shorten, slow to lengthen.
+        let send_interval = crate::common::smooth_interval_ms(
+            self.diff_interval_ms,
+            crate::common::paced_interval_ms(spf.as_secs_f64() * 1000.0, self.diff_rate, tune),
+        );
+        self.diff_interval_ms = send_interval;
+        let compare_ms = crate::common::compare_interval_ms(send_interval, tune);
         if let Some(last) = self.diff_compared {
             if now.duration_since(last).as_secs_f64() * 1000.0 < compare_ms {
                 return true;
@@ -153,14 +169,15 @@ impl Capturer {
         );
 
         // The soft verdict: below the threshold the frame rate follows the change rate, so we deliver
-        // when the target rate the change has earned says a frame is due. A still picture sits on the
-        // floor rate and still gets a frame every `1 / min_fps`, which is what keeps the peer alive.
+        // when the interval the change has earned says a frame is due. A quiet picture sits on the floor
+        // rate and still gets a frame every `1 / min_fps`, which keeps the peer alive; a busy one is
+        // paced at exactly the caller's own spf, i.e. the same cadence upstream would have used.
         let due = self
             .diff_sent
-            .map(|last| now.duration_since(last).as_secs_f64() >= 1.0 / target)
+            .map(|last| now.duration_since(last).as_secs_f64() * 1000.0 >= send_interval)
             .unwrap_or(true);
         let deliver = hard || due;
-        self.record_diff(diff.estimated, accum, skipped, target);
+        self.record_diff(diff.estimated, accum, skipped, send_interval);
         self.diff_accum = if deliver { 0 } else { accum };
         self.diff_skipped = if deliver { 0 } else { skipped };
         if deliver {
@@ -175,7 +192,7 @@ impl Capturer {
     /// `RD_DIFF_LOG=1` prints, once every five seconds, what the budget is being fed: the estimated
     /// changed bytes per frame as a coarse distribution. Choosing a threshold from a distribution
     /// beats guessing one, and the line costs nothing when the switch is off.
-    fn record_diff(&mut self, diff: u64, accum: u64, skipped: usize, target: f64) {
+    fn record_diff(&mut self, diff: u64, accum: u64, skipped: usize, interval_ms: f64) {
         const LOG_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
         if diff == u64::MAX {
             return;
@@ -195,7 +212,7 @@ impl Capturer {
         if crate::diff_log_enabled() && self.diff_samples > 0 {
             let (p50, p90, max) = self.diff_percentiles();
             log::info!(
-                "[DIFF] {:.1}s n={} sample=1/{} p50={} p90={} max={} rate={:.0}/s target={:.1}fps \
+                "[DIFF] {:.1}s n={} sample=1/{} p50={} p90={} max={} rate={:.0}/s interval={:.1}ms \
                  accum={} skipped={} (estimated changed bytes/frame)",
                 now.duration_since(started).as_secs_f32(),
                 self.diff_samples,
@@ -204,7 +221,7 @@ impl Capturer {
                 p90,
                 max,
                 self.diff_rate,
-                target,
+                interval_ms,
                 accum,
                 skipped
             );
@@ -241,7 +258,7 @@ impl Capturer {
 }
 
 impl crate::TraitCapturer for Capturer {
-    fn frame<'a>(&'a mut self, _timeout_ms: std::time::Duration) -> io::Result<Frame<'a>> {
+    fn frame<'a>(&'a mut self, spf: std::time::Duration) -> io::Result<Frame<'a>> {
         // Take the frame out and drop the guard before touching `self`: the zero-copy dedupe compare
         // needs `&mut self` to keep its reference to the previous surface, and holding the lock across
         // that would be a borrow conflict - and a lock held longer than it needs to be.
@@ -261,7 +278,7 @@ impl crate::TraitCapturer for Capturer {
                     let started = std::time::Instant::now();
                     let same = if crate::dedupe_zc_enabled() {
                         match crate::diff_accum_threshold() {
-                            Some(threshold) => self.dedupe_zc_budget(&frame, threshold),
+                            Some(threshold) => self.dedupe_zc_budget(&frame, threshold, spf),
                             None => self.dedupe_zc_equal(&frame),
                         }
                     } else {

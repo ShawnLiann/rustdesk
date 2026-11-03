@@ -152,7 +152,8 @@ jobs:
                    the_skip_guard_fires_even_if_nothing_ever_accumulates \
                    the_accumulator_saturates_instead_of_wrapping \
                    a_forced_change_is_never_deferred_by_the_budget \
-                   a_frozen_screen_gets_the_floor_rate_and_a_big_change_earns_the_cap \
+                   a_busy_picture_is_paced_exactly_like_upstream_and_a_quiet_one_is_slowed \
+                   the_interval_is_filtered_fast_up_and_slow_down \
                    the_look_is_never_slower_than_the_probe_rate \
                    the_tuning_knobs_reject_nonsense_and_keep_their_defaults \
                    only_a_positive_number_turns_the_budget_on \

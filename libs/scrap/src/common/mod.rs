@@ -509,27 +509,46 @@ pub fn diff_tune() -> DiffTune {
     })
 }
 
-/// The rate a change of `rate` bytes/second has earned: `min_fps` when nothing moves, climbing to
-/// `max_fps` once the change reaches `soft`. Straight line rather than a step, so a small change buys a
-/// proportionally small number of frames instead of either none or all of them.
-pub(crate) fn target_fps(rate: f64, tune: DiffTune) -> f64 {
-    if !rate.is_finite() || rate <= 0.0 {
-        return tune.min_fps;
-    }
-    let earned = (rate / tune.soft).clamp(0.0, 1.0);
-    let span = (tune.max_fps - tune.min_fps).max(0.0);
-    (tune.min_fps + span * earned).clamp(
-        tune.min_fps.min(tune.max_fps),
-        tune.max_fps.max(tune.min_fps),
-    )
+/// The frame interval a change of `rate` bytes/second has earned, expressed **on top of the interval the
+/// caller already paces with** rather than as an fps of our own.
+///
+/// That shape is the point: `base_ms` is upstream's own `spf` (client request merged with VideoQoS), so
+/// when the change is large the answer *is* `base_ms` and the host behaves exactly like upstream; the
+/// only time we lengthen the interval is when the picture is quiet. A parallel fps would have to
+/// re-derive the cap and would drift from the QoS logic instead of riding on it.
+pub(crate) fn paced_interval_ms(base_ms: f64, rate: f64, tune: DiffTune) -> f64 {
+    let base = if base_ms.is_finite() && base_ms > 0.0 {
+        base_ms
+    } else {
+        1000.0 / tune.max_fps.max(0.2)
+    };
+    let idle = (1000.0 / tune.min_fps.max(0.2)).max(base);
+    let ratio = if !rate.is_finite() || rate <= 0.0 {
+        0.0
+    } else {
+        (rate / tune.soft.max(1.0)).clamp(0.0, 1.0)
+    };
+    base + (idle - base) * (1.0 - ratio)
 }
 
-/// How long to wait before looking at the surface again. The compare happens at the frame rate the
-/// change has earned, but never slower than `probe_hz` - a frozen screen still needs to be checked
-/// often enough that a real change is noticed within ~`1000 / probe_hz` ms.
-pub(crate) fn compare_interval_ms(target_fps: f64, tune: DiffTune) -> f64 {
-    let looking_at = target_fps.max(tune.probe_hz);
-    1000.0 / looking_at.max(0.2)
+/// One pole, asymmetric: shrink the interval fast so a change is never late, grow it slowly so a
+/// one-frame pause in the change does not lurch the peer down to the floor rate and back. This is the
+/// low pass the raw law needs - without it the delivered cadence visibly hunts between two rates.
+pub(crate) fn smooth_interval_ms(previous: f64, target: f64) -> f64 {
+    const ATTACK: f64 = 0.5;
+    const RELEASE: f64 = 0.08;
+    if !previous.is_finite() || previous <= 0.0 || !target.is_finite() || target <= 0.0 {
+        return target;
+    }
+    let gain = if target < previous { ATTACK } else { RELEASE };
+    previous + (target - previous) * gain
+}
+
+/// How long to wait before looking at the surface again: at the interval we would send at, but never
+/// slower than `probe_hz`, because a frozen screen still has to be checked often enough that a real
+/// change is noticed within ~`1000 / probe_hz` ms.
+pub(crate) fn compare_interval_ms(send_interval_ms: f64, tune: DiffTune) -> f64 {
+    send_interval_ms.min(1000.0 / tune.probe_hz.max(0.2))
 }
 
 pub(crate) fn diff_budget_decision(
@@ -768,8 +787,9 @@ mod dedupe_zc_env_tests {
 #[cfg(test)]
 mod diff_budget_tests {
     use super::{
-        compare_interval_ms, diff_budget_decision, parse_diff_accum_env, parse_diff_max_skip_env,
-        parse_diff_sample_env, parse_diff_tune, target_fps, DiffTune,
+        compare_interval_ms, diff_budget_decision, paced_interval_ms, parse_diff_accum_env,
+        parse_diff_max_skip_env, parse_diff_sample_env, parse_diff_tune, smooth_interval_ms,
+        DiffTune,
     };
 
     #[test]
@@ -810,44 +830,77 @@ mod diff_budget_tests {
     }
 
     #[test]
-    fn a_frozen_screen_gets_the_floor_rate_and_a_big_change_earns_the_cap() {
+    fn a_busy_picture_is_paced_exactly_like_upstream_and_a_quiet_one_is_slowed() {
         let tune = DiffTune::DEFAULT;
-        assert_eq!(target_fps(0.0, tune), tune.min_fps);
-        assert_eq!(target_fps(-5.0, tune), tune.min_fps, "no negative rates");
-        assert_eq!(target_fps(f64::NAN, tune), tune.min_fps);
-        assert_eq!(target_fps(tune.soft, tune), tune.max_fps);
-        assert_eq!(
-            target_fps(tune.soft * 10.0, tune),
-            tune.max_fps,
-            "no overshoot"
-        );
-        let half = target_fps(tune.soft / 2.0, tune);
-        assert!(
-            half > tune.min_fps && half < tune.max_fps,
-            "{half} must sit between"
-        );
-        // Monotonic: more change never earns fewer frames.
-        let mut previous = 0.0;
-        for step in 0..20 {
-            let fps = target_fps(tune.soft * step as f64 / 10.0, tune);
-            assert!(fps >= previous);
-            previous = fps;
+        // The loop's own spf at 30 fps.
+        let base = 33.3;
+        // Enough change: our answer must be upstream's interval, i.e. no added latency at all.
+        assert!((paced_interval_ms(base, tune.soft * 4.0, tune) - base).abs() < 0.001);
+        // Nothing moving: the floor rate, which is a longer interval than upstream would use.
+        let idle = paced_interval_ms(base, 0.0, tune);
+        assert!((idle - 1000.0 / tune.min_fps).abs() < 0.001);
+        assert!(idle > base);
+        // In between it stays above upstream's interval and never grows with more change.
+        let mut previous = f64::INFINITY;
+        for step in 0..=10 {
+            let interval = paced_interval_ms(base, tune.soft * step as f64 / 10.0, tune);
+            assert!(
+                interval <= previous,
+                "interval must not grow with more change"
+            );
+            assert!(interval >= base - 0.001, "never faster than upstream");
+            previous = interval;
         }
+        assert_eq!(
+            paced_interval_ms(base, -1.0, tune),
+            idle,
+            "no negative rates"
+        );
+        assert_eq!(paced_interval_ms(base, f64::NAN, tune), idle);
+        // A nonsense base falls back to the cap instead of dividing by zero.
+        assert!(paced_interval_ms(0.0, tune.soft, tune) > 0.0);
+        assert!(paced_interval_ms(f64::NAN, tune.soft, tune) > 0.0);
+    }
+
+    #[test]
+    fn the_interval_is_filtered_fast_up_and_slow_down() {
+        assert_eq!(
+            smooth_interval_ms(0.0, 200.0),
+            200.0,
+            "no state to smooth from"
+        );
+        // A change appears: the interval collapses quickly (attack).
+        let after_attack = smooth_interval_ms(200.0, 33.0);
+        assert!(
+            after_attack < 120.0,
+            "{after_attack} should have moved most of the way"
+        );
+        // The change stops: the interval barely moves (release), so a one-frame pause cannot lurch the
+        // peer down to the floor rate and straight back.
+        let after_release = smooth_interval_ms(33.0, 200.0);
+        assert!(
+            after_release < 50.0,
+            "{after_release} should barely move on release"
+        );
+        // Repeated release steps still get there, just over many frames.
+        let mut interval = 33.0;
+        for _ in 0..40 {
+            interval = smooth_interval_ms(interval, 200.0);
+        }
+        assert!(interval > 190.0);
     }
 
     #[test]
     fn the_look_is_never_slower_than_the_probe_rate() {
         let tune = DiffTune::DEFAULT;
-        // A frozen screen earns the floor rate, but we still look `probe_hz` times a second.
+        // A quiet screen states a long send interval, but we still look `probe_hz` times a second.
         assert_eq!(
-            compare_interval_ms(tune.min_fps, tune),
-            1000.0 / tune.probe_hz
+            compare_interval_ms(1000.0, tune),
+            1000.0 / tune.probe_hz,
+            "must not wait a full second before looking"
         );
-        // Once the change earns more than the probe rate, the frame rate wins.
-        assert_eq!(
-            compare_interval_ms(tune.max_fps, tune),
-            1000.0 / tune.max_fps
-        );
+        // A busy one states a short interval and the frame rate wins.
+        assert_eq!(compare_interval_ms(5.0, tune), 5.0);
     }
 
     #[test]
