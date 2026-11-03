@@ -104,7 +104,6 @@ impl Capturer {
             }
             None => quartz::DiffSample::EVERYTHING,
         };
-        self.record_diff(diff.estimated);
         let (deliver, accum, skipped) = crate::common::diff_budget_decision(
             self.diff_accum,
             diff.estimated,
@@ -113,6 +112,7 @@ impl Capturer {
             crate::diff_max_skip(),
             diff.whole_chunk,
         );
+        self.record_diff(diff.estimated, accum, skipped);
         self.diff_accum = accum;
         self.diff_skipped = skipped;
         if deliver {
@@ -126,7 +126,7 @@ impl Capturer {
     /// `RD_DIFF_LOG=1` prints, once every five seconds, what the budget is being fed: the estimated
     /// changed bytes per frame as a coarse distribution. Choosing a threshold from a distribution
     /// beats guessing one, and the line costs nothing when the switch is off.
-    fn record_diff(&mut self, diff: u64) {
+    fn record_diff(&mut self, diff: u64, accum: u64, skipped: usize) {
         const LOG_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
         if diff == u64::MAX {
             return;
@@ -146,13 +146,16 @@ impl Capturer {
         if crate::diff_log_enabled() && self.diff_samples > 0 {
             let (p50, p90, max) = self.diff_percentiles();
             log::info!(
-                "[DIFF] {:.1}s n={} sample=1/{} p50={} p90={} max={} (estimated changed bytes/frame)",
+                "[DIFF] {:.1}s n={} sample=1/{} p50={} p90={} max={} accum={} skipped={} \
+                 (estimated changed bytes/frame)",
                 now.duration_since(started).as_secs_f32(),
                 self.diff_samples,
                 crate::diff_sample(),
                 p50,
                 p90,
-                max
+                max,
+                accum,
+                skipped
             );
         }
         self.diff_hist = [0; 40];
