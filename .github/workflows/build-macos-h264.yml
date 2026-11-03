@@ -132,7 +132,7 @@ jobs:
                    nv12_capture_only_the_exact_value_one_enables_it \
                    dedupe_zc_only_the_exact_value_one_enables_it \
                    log_split_only_the_exact_value_one_enables_it; do
-            if ! grep -q "test $t ... ok" env-tests.log; then
+            if ! grep -qE "test ([a-zA-Z0-9_:]+::)?$t \.\.\. ok" env-tests.log; then
               echo "MISSING OR FAILED: $t"
               exit 1
             fi
