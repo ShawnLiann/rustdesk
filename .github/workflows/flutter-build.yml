@@ -1042,6 +1042,9 @@ jobs:
           cargo test --locked --release --lib --features "$FEATURES"
           # Opt-in, and its macOS tests run nowhere else.
           cargo test --locked --release -p clipboard --features unix-file-copy-paste
+          # `libs/scrap` is a separate crate: the root `--lib` run above never enters it, so these
+          # presentation-gate tests would run in no lane without a line that names the crate.
+          cargo test --locked -p scrap --features hwcodec --lib presentation_tests -- --nocapture
 
       - name: create unsigned dmg
         if: env.UPLOAD_ARTIFACT == 'true'
