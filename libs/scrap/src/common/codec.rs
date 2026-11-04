@@ -845,8 +845,8 @@ impl Decoder {
             // before the call: the decoder reads the same flag live, so a session
             // that opts into GPU frames mid-decode hands out a surface whose
             // software transfer was skipped. Deciding on the earlier value threw
-            // that frame away and reported "nothing decoded", which retires the
-            // codec on the first frame.
+            // that frame away and returned `false`, which on the first frame makes
+            // the client mark the codec unsupported.
             #[cfg(target_os = "macos")]
             {
                 decoder.decode(&h264.data)?;
