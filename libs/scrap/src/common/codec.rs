@@ -851,10 +851,8 @@ impl Decoder {
             {
                 decoder.decode(&h264.data)?;
                 if let Some(frame) = decoder.take_pixelbuffer() {
-                    // Metadata only: the recorder sizes its output from `ImageRgb`,
-                    // and the software conversion that used to fill these in never
-                    // runs on this path, so a recording would otherwise open at 0x0
-                    // (or at the last software frame's size). No pixels are copied.
+                    // Metadata only (no pixels): the recorder sizes its output from `ImageRgb`,
+                    // which nothing else fills on this path, so a recording would open at 0x0.
                     rgb.w = frame.width() as usize;
                     rgb.h = frame.height() as usize;
                     *pixelbuffer = Some(frame);
