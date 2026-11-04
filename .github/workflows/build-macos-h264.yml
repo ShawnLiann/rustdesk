@@ -372,7 +372,9 @@ jobs:
           # Every switch this build is meant to expose. The name has to survive in the binary, or the
           # env var silently does nothing and the arm measures a path it was not meant to measure.
           for name in RD_ENCODE_PIXBUF RD_NO_DEDUPE RD_LAZY_BGRA RD_LOAD_LOG RD_NO_REPEAT \
-                      RD_PIXBUF_NV12 RD_DEDUPE_ZC RD_FORCE_CODEC RD_REFUSE_LIMIT RUSTDESK_VT_ZEROCOPY \
+                      RD_PIXBUF_NV12 RD_DEDUPE_ZC RD_DIFF_ACCUM RD_DIFF_SAMPLE RD_DIFF_MAX_SKIP \
+                      RD_DIFF_LOG RD_DIFF_SOFT RD_DIFF_PROBE_HZ RD_DIFF_MAX_FPS RD_DIFF_MIN_FPS \
+                      RD_FORCE_CODEC RD_REFUSE_LIMIT RUSTDESK_VT_ZEROCOPY \
                       RD_LOG_SPLIT RD_VT_LATENCY RD_VT_FPS \
                       FlutterRgbaRendererPluginOnPixelBuffer; do
             n=$(strings -a "$DYLIB" | grep -cF "$name" || true)
