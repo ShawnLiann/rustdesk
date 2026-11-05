@@ -1042,6 +1042,19 @@ jobs:
           cargo test --locked --release --lib --features "$FEATURES"
           # Opt-in, and its macOS tests run nowhere else.
           cargo test --locked --release -p clipboard --features unix-file-copy-paste
+          # `-p scrap` for the same reason the drm tests below name their packages: `cargo test --lib`
+          # at the root builds the ROOT package only, so the frame-presentation tests in libs/scrap
+          # were never built by any job here. A filter that matches nothing exits 0, so assert that
+          # these actually selected tests.
+          scrap_out=$(cargo test --locked --release -p scrap --features hwcodec --lib presentation_tests 2>&1) || {
+            echo "$scrap_out"; echo "::error::frame-presentation tests failed"; exit 1; }
+          echo "$scrap_out"
+          ran=$(echo "$scrap_out" | awk '/^running [0-9]+ tests?$/ { n += $2 } END { print n+0 }')
+          echo "frame-presentation tests ran $ran"
+          if [ "$ran" -lt 2 ]; then
+            echo "::error::frame-presentation tests selected $ran; expected 2 (renamed or removed?)"
+            exit 1
+          fi
 
       - name: create unsigned dmg
         if: env.UPLOAD_ARTIFACT == 'true'
