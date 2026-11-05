@@ -386,9 +386,13 @@ impl HwRamDecoder {
             }
         }
     }
-    pub fn decode<'a>(&'a mut self, data: &[u8]) -> ResultType<Vec<HwRamDecoderImage<'a>>> {
+    pub fn decode(&mut self, data: &[u8]) -> ResultType<HwRamDecodedFrames> {
         match self.decoder.decode(data) {
-            Ok(v) => Ok(v.iter().map(|f| HwRamDecoderImage { frame: f }).collect()),
+            Ok(v) => Ok(HwRamDecodedFrames {
+                frames: v.frames,
+                #[cfg(target_os = "macos")]
+                pixelbuffer: v.pixelbuffer,
+            }),
             Err(e) => Err(anyhow!(e)),
         }
     }
@@ -414,19 +418,33 @@ impl HwRamDecoder {
         self.decoder.set_pixelbuffer_wanted(wanted);
     }
 
-    /// Take the GPU frame produced by the last `decode` call, if any.
+}
+
+/// The frames one [`HwRamDecoder::decode`] call produced, owned by the caller.
+///
+/// The caller reads the GPU frame and the software images from this value
+/// instead of asking the decoder twice, so a decode result cannot be confused
+/// with the one before it and no borrow blocks taking the surface out.
+pub struct HwRamDecodedFrames {
+    frames: Vec<DecodeFrame>,
+    #[cfg(target_os = "macos")]
+    pixelbuffer: crate::PixelBufferOutput,
+}
+
+impl HwRamDecodedFrames {
+    /// Take the GPU frame this call delivered, if any.
     ///
-    /// `decode` hands out a mutable borrow, so callers read the GPU frame first
-    /// and then the software frames through [`Self::last_frame_images`].
+    /// `None` means the call produced no direct frame: the decoder rejected it,
+    /// the format is not directly deliverable, or a software frame won in the
+    /// same call. Never fall back to a frame from a previous call.
     #[cfg(target_os = "macos")]
     pub fn take_pixelbuffer(&mut self) -> crate::PixelBufferOutput {
-        self.decoder.take_pixelbuffer()
+        self.pixelbuffer.take()
     }
 
-    /// Software frames of the last `decode` call, behind a shared borrow.
-    pub fn last_frame_images(&self) -> Vec<HwRamDecoderImage<'_>> {
-        self.decoder
-            .last_frames()
+    /// Software frames of this call, behind a shared borrow.
+    pub fn images(&self) -> Vec<HwRamDecoderImage<'_>> {
+        self.frames
             .iter()
             .map(|f| HwRamDecoderImage { frame: f })
             .collect()

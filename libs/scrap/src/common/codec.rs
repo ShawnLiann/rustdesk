@@ -841,31 +841,25 @@ impl Decoder {
             *pixelbuffer = None;
         }
         for h264 in frames.frames.iter() {
-            // Consume what this decode actually produced, not what the switch said
-            // before the call: the decoder reads the same flag live, so a session
-            // that opts into GPU frames mid-decode hands out a surface whose
-            // software transfer was skipped. Deciding on the earlier value threw
-            // that frame away and reported "nothing decoded", which retires the
-            // codec on the first frame.
+            // One call, one owner: everything this packet produced is read from
+            // the value the call returned, so a GPU frame and the software frames
+            // can never come from two different calls. The decoder reads the
+            // caller's flag live, so a session that opts into GPU frames
+            // mid-decode still gets the frame it just decoded.
+            let mut decoded = decoder.decode(&h264.data)?;
+            // Metadata only (no pixels): the recorder sizes its output from
+            // `ImageRgb`, which nothing else fills on this path, so a recording
+            // would open at 0x0.
             #[cfg(target_os = "macos")]
-            {
-                decoder.decode(&h264.data)?;
-                if let Some(frame) = decoder.take_pixelbuffer() {
-                    // Metadata only (no pixels): the recorder sizes its output from `ImageRgb`,
-                    // which nothing else fills on this path, so a recording would open at 0x0.
-                    rgb.w = frame.width() as usize;
-                    rgb.h = frame.height() as usize;
-                    *pixelbuffer = Some(frame);
-                    ret = true;
-                    continue;
-                }
+            if let Some(frame) = decoded.take_pixelbuffer() {
+                rgb.w = frame.width() as usize;
+                rgb.h = frame.height() as usize;
+                *pixelbuffer = Some(frame);
+                ret = true;
+                continue;
             }
-            #[cfg(target_os = "macos")]
-            let images = decoder.last_frame_images();
-            #[cfg(not(target_os = "macos"))]
-            let images = decoder.decode(&h264.data)?;
             let mut software_ok = false;
-            for image in images {
+            for image in decoded.images() {
                 if image.to_fmt(rgb, i420).is_ok() {
                     software_ok = true;
                 }
