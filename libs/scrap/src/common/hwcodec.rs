@@ -208,6 +208,13 @@ impl EncoderApi for HwRamEncoder {
     }
 
     fn disable(&self) {
+        // Diagnostic only (prtest line, never part of the PR): this path is silent upstream, so a
+        // hardware encoder that works one moment and is written off the next leaves no trace. Log
+        // which encoder was given up on and what the capability list is about to lose.
+        log::warn!(
+            "RD_DIAG disable() for encoder {}, dropping ram_encode entries",
+            self.config.name
+        );
         HwCodecConfig::clear(false, true);
     }
 }
@@ -718,6 +725,25 @@ impl HwCodecConfig {
         {
             let mut c = CONFIG.lock().unwrap();
             if let Some(c) = c.as_mut() {
+                // Diagnostic only (prtest line, never part of the PR): print what is being thrown
+                // away, so a capability that exists but is discarded can be told apart from one that
+                // was never detected.
+                let names = |v: &[CodecInfo]| {
+                    v.iter().map(|i| i.name.clone()).collect::<Vec<_>>()
+                };
+                #[cfg(feature = "vram")]
+                log::warn!(
+                    "RD_DIAG clear() drops vram={:?} ram_encode={:?} ram_decode={:?}",
+                    names(&c.vram_encode),
+                    names(&c.ram_encode),
+                    names(&c.ram_decode)
+                );
+                #[cfg(not(feature = "vram"))]
+                log::warn!(
+                    "RD_DIAG clear() drops ram_encode={:?} ram_decode={:?}",
+                    names(&c.ram_encode),
+                    names(&c.ram_decode)
+                );
                 if vram {
                     #[cfg(feature = "vram")]
                     if encode {
