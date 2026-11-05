@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
 # Read more about iOS versioning at
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # 1.1.9-1 works for android, but for ios it becomes 1.1.91, need to set it to 1.1.9-a.1 for iOS, will get 1.1.9.1, but iOS store not allow 4 numbers
-version: 1.5.1+69
+version: 1.5.1+68
 
 environment:
   sdk: '^3.1.0'
@@ -92,9 +92,6 @@ dependencies:
   flutter_keyboard_visibility: ^5.4.0
   texture_rgba_renderer:
     git:
-      # TEMPORARY (measurement build only): the fork's #3 stacked on the maintainer's
-      # fix-texture-lifetime, which is the only ref that exports the zero-copy entry point.
-      # The url and the ref are one pin: move both or `pub get` fails to find the ref.
       url: https://github.com/ShawnLiann/flutter_texture_rgba_renderer
       ref: fe1cca9bfd164ad39ccdac48290e6da50849ce48
   percent_indicator: ^4.2.2
