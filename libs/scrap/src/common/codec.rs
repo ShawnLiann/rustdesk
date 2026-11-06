@@ -847,10 +847,12 @@ impl Decoder {
             // software transfer was skipped. Deciding on the earlier value threw
             // that frame away and reported "nothing decoded", which retires the
             // codec on the first frame.
+            // One call, one result: the simplify shape returns the GPU frame and the
+            // software images together, so nothing has to be asked twice.
+            let mut decoded = decoder.decode(&h264.data)?;
             #[cfg(target_os = "macos")]
             {
-                decoder.decode(&h264.data)?;
-                if let Some(frame) = decoder.take_pixelbuffer() {
+                if let Some(frame) = decoded.take_pixelbuffer() {
                     // Metadata only (no pixels): the recorder sizes its output from `ImageRgb`,
                     // which nothing else fills on this path, so a recording would open at 0x0.
                     rgb.w = frame.width() as usize;
@@ -860,10 +862,7 @@ impl Decoder {
                     continue;
                 }
             }
-            #[cfg(target_os = "macos")]
-            let images = decoder.last_frame_images();
-            #[cfg(not(target_os = "macos"))]
-            let images = decoder.decode(&h264.data)?;
+            let images = decoded.into_images();
             let mut software_ok = false;
             for image in images {
                 if image.to_fmt(rgb, i420).is_ok() {

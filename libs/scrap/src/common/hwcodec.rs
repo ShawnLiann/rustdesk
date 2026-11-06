@@ -310,8 +310,9 @@ impl HwRamEncoder {
 pub struct HwRamDecoder {
     decoder: Decoder,
     pub info: CodecInfo,
-    /// The same switch the inner decoder consults, kept here so the decode loop
-    /// can read it without a second handle.
+    /// Whether this decoder may hand out a GPU frame. Read at call time and
+    /// passed into `decode_gpu`, because the simplify shape keeps no switch on
+    /// the decoder itself.
     #[cfg(target_os = "macos")]
     pixelbuffer_wanted: crate::GpuFramesWanted,
 }
@@ -364,15 +365,13 @@ impl HwRamDecoder {
             thread_count: codec_thread_num(16) as _,
         };
         match Decoder::new(ctx) {
-            Ok(mut decoder) => {
+            Ok(decoder) => {
                 // Reject by default: a decoder nobody configured must keep
                 // producing software frames. The owner installs its own switch
                 // with `set_pixelbuffer_wanted` when its renderer can present
                 // GPU frames.
                 #[cfg(target_os = "macos")]
                 let pixelbuffer_wanted = crate::gpu_frames_wanted_flag(false);
-                #[cfg(target_os = "macos")]
-                decoder.set_pixelbuffer_wanted(pixelbuffer_wanted.clone());
                 Ok(HwRamDecoder {
                     decoder,
                     info,
@@ -386,9 +385,26 @@ impl HwRamDecoder {
             }
         }
     }
-    pub fn decode<'a>(&'a mut self, data: &[u8]) -> ResultType<Vec<HwRamDecoderImage<'a>>> {
-        match self.decoder.decode(data) {
-            Ok(v) => Ok(v.iter().map(|f| HwRamDecoderImage { frame: f }).collect()),
+    pub fn decode<'a>(&'a mut self, data: &[u8]) -> ResultType<HwRamDecodedFrames<'a>> {
+        // Spike: hwcodec#53's simplify shape decides GPU delivery per call
+        // (`decode_gpu(packet, want_gpu)`) instead of installing a flag on the
+        // decoder. Keep the caller-facing two-step API so `codec.rs` is unchanged.
+        #[cfg(target_os = "macos")]
+        let want = self
+            .pixelbuffer_wanted
+            .load(std::sync::atomic::Ordering::Relaxed);
+        #[cfg(not(target_os = "macos"))]
+        let want = false;
+        match self.decoder.decode_gpu(data, want) {
+            Ok(decoded) => Ok(HwRamDecodedFrames {
+                images: decoded
+                    .frames
+                    .iter()
+                    .map(|f| HwRamDecoderImage { frame: f })
+                    .collect(),
+                #[cfg(target_os = "macos")]
+                pixelbuffer: decoded.pixelbuffer,
+            }),
             Err(e) => Err(anyhow!(e)),
         }
     }
@@ -410,26 +426,30 @@ impl HwRamDecoder {
     /// sessions with different render paths do not share one switch.
     #[cfg(target_os = "macos")]
     pub fn set_pixelbuffer_wanted(&mut self, wanted: crate::GpuFramesWanted) {
-        self.pixelbuffer_wanted = wanted.clone();
-        self.decoder.set_pixelbuffer_wanted(wanted);
+        // The simplify shape has no decoder-side switch: the wanted flag is
+        // read at call time by `decode()`.
+        self.pixelbuffer_wanted = wanted;
     }
 
-    /// Take the GPU frame produced by the last `decode` call, if any.
-    ///
-    /// `decode` hands out a mutable borrow, so callers read the GPU frame first
-    /// and then the software frames through [`Self::last_frame_images`].
+}
+
+/// What one `decode` call produced: the software images and, on macOS, the GPU
+/// frame handed straight over. Both belong to that call, which is why they come
+/// back together instead of being asked from the decoder twice.
+pub struct HwRamDecodedFrames<'a> {
+    images: Vec<HwRamDecoderImage<'a>>,
+    #[cfg(target_os = "macos")]
+    pixelbuffer: crate::PixelBufferOutput,
+}
+
+impl<'a> HwRamDecodedFrames<'a> {
     #[cfg(target_os = "macos")]
     pub fn take_pixelbuffer(&mut self) -> crate::PixelBufferOutput {
-        self.decoder.take_pixelbuffer()
+        self.pixelbuffer.take()
     }
 
-    /// Software frames of the last `decode` call, behind a shared borrow.
-    pub fn last_frame_images(&self) -> Vec<HwRamDecoderImage<'_>> {
-        self.decoder
-            .last_frames()
-            .iter()
-            .map(|f| HwRamDecoderImage { frame: f })
-            .collect()
+    pub fn into_images(self) -> Vec<HwRamDecoderImage<'a>> {
+        self.images
     }
 }
 
