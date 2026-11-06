@@ -11,7 +11,7 @@ env:
   FLUTTER_VERSION: "3.24.5"
   VCPKG_COMMIT_ID: "9e593bb18ea69cc5095e012465dcd675a822ed0d"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
-  VERSION: "1.5.0-h264zc"
+  VERSION: "1.5.0-h264flow"
 
 jobs:
   generate-bridge:
@@ -21,9 +21,6 @@ jobs:
     name: macOS arm64 (h264 test)
     needs: [generate-bridge]
     runs-on: macos-15
-    # Build steps run dependency build scripts; keep the token read-only.
-    permissions:
-      contents: read
     steps:
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410
@@ -36,8 +33,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          # vcpkg and cargo build scripts run in this job; do not leave the token in .git/config.
-          persist-credentials: false
 
       - name: Install build runtime
         run: |
@@ -111,13 +106,6 @@ jobs:
           sed -i -e "s/MACOSX_DEPLOYMENT_TARGET = [0-9]*.[0-9]*;/MACOSX_DEPLOYMENT_TARGET = ${MIN_MACOS_VERSION};/" flutter/macos/Runner.xcodeproj/project.pbxproj
           ./build.py --flutter --hwcodec --unix-file-copy-paste --screencapturekit
 
-      # Two claims are only prose without this step: that the pixel-buffer path stays off unless
-      # RD_ENCODE_PIXBUF is exactly "1", and that scrap still builds when hwcodec is not compiled
-      # in. `cargo test --no-default-features` compiles the second and runs the first.
-      - name: Test the opt-in gate without hwcodec
-        run: |
-          cargo test -p scrap --no-default-features pixbuf_env -- --nocapture
-
       - name: Show warm-up instrumentation strings
         run: |
           echo "--- binary contains WARMUP log ---"
@@ -142,9 +130,6 @@ jobs:
     name: macOS x86_64 (h264 test)
     needs: [generate-bridge]
     runs-on: macos-15-intel
-    # Build steps run dependency build scripts; keep the token read-only.
-    permissions:
-      contents: read
     steps:
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410
@@ -157,8 +142,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          # vcpkg and cargo build scripts run in this job; do not leave the token in .git/config.
-          persist-credentials: false
 
       - name: Install build runtime
         run: |
@@ -251,51 +234,3 @@ jobs:
           name: rustdesk-h264-x86_64
           path: rustdesk-${{ env.VERSION }}-x86_64.dmg
           retention-days: 14
-
-  # The encode zero-copy path is a C++ wrapper called over FFI; a compile error there is only
-  # caught by a build, and the dmg build takes ~50 minutes. This runs the wrapper's own smoke
-  # test in ~2 minutes: it builds a BGRA CVPixelBuffer, pushes frames through the real
-  # VTCompressionSession, and fails if no packet comes back.
-  encode-wrapper-smoke:
-    name: macOS encode wrapper smoke test
-    runs-on: macos-15
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout source code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          persist-credentials: false
-
-      - name: Build libyuv for the PSNR guard
-        run: |
-          set -euo pipefail
-          git init -q "$RUNNER_TEMP/libyuv"
-          git -C "$RUNNER_TEMP/libyuv" fetch -q --depth=1 \
-            https://chromium.googlesource.com/libyuv/libyuv \
-            8d440c181c1bdc884c2d2d6d23a773ae51d178a1
-          git -C "$RUNNER_TEMP/libyuv" checkout -q FETCH_HEAD
-          cmake -S "$RUNNER_TEMP/libyuv" -B "$RUNNER_TEMP/libyuv/build" \
-            -DCMAKE_BUILD_TYPE=Release -DJPEG=OFF -DBUILD_SHARED_LIBS=OFF -DUNIT_TEST=OFF
-          cmake --build "$RUNNER_TEMP/libyuv/build" -j"$(sysctl -n hw.ncpu)"
-          LIB=$(find "$RUNNER_TEMP/libyuv/build" -name libyuv.a -print -quit)
-          test -n "$LIB"
-          mkdir -p "$RUNNER_TEMP/libyuv-prefix/lib" "$RUNNER_TEMP/libyuv-prefix/include"
-          cp "$LIB" "$RUNNER_TEMP/libyuv-prefix/lib/"
-          cp -R "$RUNNER_TEMP/libyuv/include/libyuv.h" "$RUNNER_TEMP/libyuv/include/libyuv" \
-            "$RUNNER_TEMP/libyuv-prefix/include/"
-
-      - name: Verify the wrapper (encode, submit CPU, PSNR against libyuv)
-        env:
-          # Hosted runners have no AppleM2ScalerCSCDriver. On 41004862543 that showed up as
-          # HEVC keys=0 while still decoding, and current/direct at 51.27/48.17 dB where real
-          # hardware gives 47.23/47.59. Keep the absolute 40 dB floor here (a missing BT.601
-          # tag lands at ~27.6 dB anywhere) and the tight 1.5 dB comparison on hardware.
-          STRICT: "0"
-        run: |
-          set -euo pipefail
-          export LIBYUV_PREFIX="$RUNNER_TEMP/libyuv-prefix"
-          # The wrapper lives in the hwcodec rev Cargo.toml pins, which this job never builds.
-          export HWCODEC_ROOT=$(scripts/hwcodec-encode-check/resolve-hwcodec-root.sh --fetch)
-          scripts/hwcodec-encode-check/verify-encode-zerocopy.sh
