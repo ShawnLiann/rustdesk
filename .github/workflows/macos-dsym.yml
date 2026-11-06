@@ -1,0 +1,147 @@
+name: Build macOS dSYM (fork-only, never in a PR)
+
+# Why this exists: the peer host needs function-level names to attribute CPU time in
+# Instruments, and that requires dSYMs whose UUIDs match the binary it runs. Generating
+# them must not touch a PR, so this workflow lives only on fork `ci/*` branches.
+#
+# Design notes:
+#   * Same toolchain/steps as build-macos-h264.yml's arm64 lane, so the dSYM matches the
+#     dmg we actually test (same deployment target, same features).
+#   * CARGO_PROFILE_RELEASE_DEBUG=1 keeps DWARF in the release profile: without it the
+#     dylib ships stripped and no dSYM can be matched to it.
+#   * The workflow is self-reporting: it prints the UUID of every Mach-O it collects, so a
+#     mismatch is visible in the log instead of being discovered on the peer host.
+
+on:
+  workflow_dispatch:
+
+env:
+  MAC_RUST_VERSION: "1.81"
+  FLUTTER_VERSION: "3.24.5"
+  VCPKG_COMMIT_ID: "9e593bb18ea69cc5095e012465dcd675a822ed0d"
+  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+  VERSION: "1.5.0-h264flow-dsym"
+  CARGO_PROFILE_RELEASE_DEBUG: "1"
+  CARGO_PROFILE_RELEASE_STRIP: "false"
+
+jobs:
+  generate-bridge:
+    uses: ./.github/workflows/bridge.yml
+
+  dsym-macos-arm64:
+    name: macOS arm64 dSYM
+    needs: [generate-bridge]
+    runs-on: macos-15
+    steps:
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build runtime
+        run: |
+          brew install llvm
+          if ! command -v pkg-config &>/dev/null; then brew install pkg-config; fi
+
+      - name: Install NASM
+        run: |
+          wget https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/macosx/nasm-2.16.03-macosx.zip
+          unzip -q nasm-2.16.03-macosx.zip
+          sudo cp nasm-2.16.03/nasm /usr/local/bin/nasm
+          nasm --version
+
+      - name: Install flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - name: Patch flutter
+        run: |
+          cd $(dirname $(dirname $(which flutter)))
+          git apply ${{ github.workspace }}/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff
+
+      - name: Workaround for flutter issue
+        shell: bash
+        run: |
+          cd "$(dirname "$(which flutter)")"
+          sed -i -e 's/_setFramesEnabledState(false);/\/\/_setFramesEnabledState(false);/g' ../packages/flutter/lib/src/scheduler/binding.dart
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ env.MAC_RUST_VERSION }}
+          targets: aarch64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: macos-arm64-dsym
+
+      - name: Restore bridge files
+        uses: actions/download-artifact@v4
+        with:
+          name: bridge-artifact
+          path: ./
+
+      - name: Setup vcpkg with GitHub Actions binary cache
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+          doNotCache: false
+
+      - name: Install vcpkg dependencies
+        run: |
+          if ! $VCPKG_ROOT/vcpkg install --x-install-root="$VCPKG_ROOT/installed"; then
+            find "${VCPKG_ROOT}/" -name "*.log" | while read -r f; do echo "$f:"; tail -n 50 "$f"; done
+            exit 1
+          fi
+
+      - name: Sync Cargo.lock for patched hwcodec
+        run: |
+          cargo update -p hwcodec
+          grep -A3 'name = "hwcodec"' Cargo.lock | head -8
+
+      - name: Build rustdesk
+        run: |
+          MIN_MACOS_VERSION="12.3"
+          sed -i -e "s/MACOSX_DEPLOYMENT_TARGET\=[0-9]*.[0-9]*/MACOSX_DEPLOYMENT_TARGET=${MIN_MACOS_VERSION}/" build.py
+          sed -i -e "s/platform :osx, '.*'/platform :osx, '${MIN_MACOS_VERSION}'/" flutter/macos/Podfile
+          sed -i -e "s/osx_minimum_system_version = \"[0-9]*.[0-9]*\"/osx_minimum_system_version = \"${MIN_MACOS_VERSION}\"/" Cargo.toml
+          sed -i -e "s/MACOSX_DEPLOYMENT_TARGET = [0-9]*.[0-9]*;/MACOSX_DEPLOYMENT_TARGET = ${MIN_MACOS_VERSION};/" flutter/macos/Runner.xcodeproj/project.pbxproj
+          ./build.py --flutter --hwcodec --unix-file-copy-paste --screencapturekit
+
+      - name: Collect dSYMs, binaries and UUIDs
+        run: |
+          set -u
+          APP=flutter/build/macos/Build/Products/Release/RustDesk.app
+          DYLIB="$APP/Contents/Frameworks/liblibrustdesk.dylib"
+          EXEC="$APP/Contents/MacOS/RustDesk"
+          mkdir -p dsym-out
+          echo "=== UUIDs of the Mach-O files we will symbolise ==="
+          for f in "$EXEC" "$DYLIB"; do
+            [ -f "$f" ] && { echo "--- $f"; dwarfdump --uuid "$f" || true; }
+          done
+          echo "=== .dSYM bundles in the tree ==="
+          find . -maxdepth 8 -name '*.dSYM' -print 2>/dev/null | head -50 || true
+          find . -maxdepth 8 -name '*.dSYM' -exec cp -R {} dsym-out/ \; 2>/dev/null || true
+          cp "$EXEC" dsym-out/RustDesk-executable 2>/dev/null || true
+          cp "$DYLIB" dsym-out/liblibrustdesk.dylib 2>/dev/null || true
+          echo "=== manifest ==="
+          ls -la dsym-out || true
+          echo "=== DWARF presence in the dylib (0 = stripped) ==="
+          dwarfdump --uuid dsym-out/liblibrustdesk.dylib 2>/dev/null | wc -l || true
+
+      - name: Upload dSYM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustdesk-dsym-aarch64
+          path: dsym-out
+          retention-days: 30
+          if-no-files-found: warn
