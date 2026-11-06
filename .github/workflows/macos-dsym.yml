@@ -167,6 +167,14 @@ jobs:
           echo "=== sizes: dylib vs DWARF ==="
           ls -la dsym-out/liblibrustdesk.dylib dsym-out/liblibrustdesk.dylib.dSYM/Contents/Resources/DWARF/* 2>/dev/null || true
 
+      - name: Create unsigned dmg (same build as the dSYMs)
+        run: |
+          brew install create-dmg
+          create-dmg --icon "RustDesk.app" 200 190 --hide-extension "RustDesk.app" \
+            --window-size 800 400 --app-drop-link 600 185 \
+            rustdesk-${VERSION}-aarch64.dmg ./flutter/build/macos/Build/Products/Release/RustDesk.app
+          shasum -a 256 rustdesk-${VERSION}-aarch64.dmg
+
       - name: Upload dSYM artifact
         uses: actions/upload-artifact@v4
         with:
@@ -174,3 +182,10 @@ jobs:
           path: dsym-out
           retention-days: 30
           if-no-files-found: warn
+
+      - name: Upload the matching dmg
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustdesk-dsym-aarch64-dmg
+          path: rustdesk-${{ env.VERSION }}-aarch64.dmg
+          retention-days: 30
