@@ -1,0 +1,4 @@
+NOT carried by closeout/perf-bgra-20261106 (2026-11-06): it refines the RD_ENCODE_PIXBUF
+path (`encode_pixbuf_enabled`, `wraps_video_toolbox_codec`, `CVPixelBufferHandle`) which does
+not exist on the #16732 / output-contract line — the cherry-pick conflicted to empty context.
+Keep host/imac-4k-h264-20261101 alive until the pixbuf encode path ships; re-evaluate then.
