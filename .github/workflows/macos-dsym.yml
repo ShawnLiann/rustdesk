@@ -121,6 +121,12 @@ jobs:
           sed -i -e "s/platform :osx, '.*'/platform :osx, '${MIN_MACOS_VERSION}'/" flutter/macos/Podfile
           sed -i -e "s/osx_minimum_system_version = \"[0-9]*.[0-9]*\"/osx_minimum_system_version = \"${MIN_MACOS_VERSION}\"/" Cargo.toml
           sed -i -e "s/MACOSX_DEPLOYMENT_TARGET = [0-9]*.[0-9]*;/MACOSX_DEPLOYMENT_TARGET = ${MIN_MACOS_VERSION};/" flutter/macos/Runner.xcodeproj/project.pbxproj
+          # The point of this lane is symbols. The release profile ships strip = true and no debug
+          # info, which is why liblibrustdesk.dylib arrives with 1.3k exported names and nothing to
+          # attribute a sample's addresses to. Patch it and assert both edits landed.
+          sed -i '' 's/^strip = true$/strip = false/' Cargo.toml
+          awk 'BEGIN{d=0} /^\[profile\.release\]$/ && !d {print; print "debug = 1"; d=1; next} {print}' Cargo.toml > Cargo.toml.sym && mv Cargo.toml.sym Cargo.toml
+          grep -q '^strip = false$' Cargo.toml && grep -q '^debug = 1$' Cargo.toml || { echo 'release profile not patched'; exit 1; }
           ./build.py --flutter --hwcodec --unix-file-copy-paste --screencapturekit
 
       - name: Collect dSYMs, binaries and UUIDs
@@ -139,10 +145,27 @@ jobs:
           find . -maxdepth 8 -name '*.dSYM' -exec cp -R {} dsym-out/ \; 2>/dev/null || true
           cp "$EXEC" dsym-out/RustDesk-executable 2>/dev/null || true
           cp "$DYLIB" dsym-out/liblibrustdesk.dylib 2>/dev/null || true
-          echo "=== manifest ==="
-          ls -la dsym-out || true
-          echo "=== DWARF presence in the dylib (0 = stripped) ==="
-          dwarfdump --uuid dsym-out/liblibrustdesk.dylib 2>/dev/null | wc -l || true
+          # The dylib is produced by cargo, not by Xcode, so nothing in the tree carries a dSYM for
+          # it; dsymutil is what pairs its symbols with the LC_UUID a peer reads off its install.
+          echo "=== dsymutil ==="
+          for pair in "$DYLIB:liblibrustdesk.dylib" "$EXEC:RustDesk-executable"; do
+            src="${pair%%:*}"; out="${pair##*:}"
+            [ -f "$src" ] || continue
+            dsymutil "$src" -o "dsym-out/${out}.dSYM" 2>&1 | tail -3 || true
+            dwarfdump --uuid "dsym-out/${out}.dSYM" || true
+          done
+          # A peer matches its own binary by UUID, never by stamp or file name.
+          {
+            echo "# UUID <-> file, read with dwarfdump --uuid"
+            for f in dsym-out/liblibrustdesk.dylib dsym-out/liblibrustdesk.dylib.dSYM dsym-out/RustDesk-executable dsym-out/RustDesk-executable.dSYM; do
+              [ -e "$f" ] && dwarfdump --uuid "$f"
+            done
+          } > dsym-out/UUIDS.txt || true
+          cat dsym-out/UUIDS.txt || true
+          echo "=== symbol count in the shipped dylib (1.3k = still stripped) ==="
+          nm -a dsym-out/liblibrustdesk.dylib 2>/dev/null | wc -l || true
+          echo "=== sizes: dylib vs DWARF ==="
+          ls -la dsym-out/liblibrustdesk.dylib dsym-out/liblibrustdesk.dylib.dSYM/Contents/Resources/DWARF/* 2>/dev/null || true
 
       - name: Upload dSYM artifact
         uses: actions/upload-artifact@v4
