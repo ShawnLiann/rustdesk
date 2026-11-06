@@ -1,0 +1,4 @@
+carried by closeout/perf-bgra-20261106 as 07665978 (2026-11-06).
+Adapted, not a straight cherry-pick: this line keeps `surface_to_bgra(h)` + Deref, so the
+zero-fill was removed there instead of carrying the lazy `bgra(h)`/OnceCell shape.
+Source branch host/lazybgra2-20261102 is now a retirement candidate for this commit.
