@@ -118,82 +118,11 @@ jobs:
       # scrap still builds when hwcodec is not compiled in. `cargo test --no-default-features`
       # compiles the last and runs the rest; the filter is the shared `_env` in every test-module
       # path, and the greps below name each test so a filter that selects nothing cannot pass.
-      - name: Test the switch gates without hwcodec
-        run: |
-          set -o pipefail
-          cargo test -p scrap --no-default-features _env -- --nocapture 2>&1 | tee env-tests.log
-          for t in no_dedupe_off_when_the_variable_is_absent \
-                   no_dedupe_only_the_exact_value_one_enables_it \
-                   off_when_the_variable_is_absent \
-                   only_the_exact_value_one_enables_it \
-                   lazy_bgra_stays_on_unless_switched_off \
-                   load_log_stays_on_unless_switched_off \
-                   no_repeat_only_the_exact_value_one_enables_it \
-                   nv12_capture_only_the_exact_value_one_enables_it \
-                   dedupe_zc_only_the_exact_value_one_enables_it \
-                   log_split_only_the_exact_value_one_enables_it; do
-            if ! grep -qE "test ([a-zA-Z0-9_:]+::)?$t \.\.\. ok" env-tests.log; then
-              echo "MISSING OR FAILED: $t"
-              exit 1
-            fi
-          done
-          grep "test result:" env-tests.log
-
-      # The change budget (RD_DIFF_ACCUM) and its sample grid are pure arithmetic, and a dmg build
-      # compiles no #[cfg(test)] code at all, so this step is the only place the rules run. `diff_` is
-      # the shared module prefix (`diff_budget_tests`, `diff_grid_tests`) and the greps name every test,
-      # so a filter that selects nothing fails here instead of passing quietly.
-      - name: Test the change budget
-        run: |
-          set -o pipefail
-          cargo test -p scrap --no-default-features diff_ -- --nocapture 2>&1 | tee diff-budget-tests.log
-          for t in the_budget_only_delivers_once_the_accumulated_change_covers_it \
-                   one_fully_changed_frame_is_worth_a_frame_on_its_own \
-                   the_skip_guard_fires_even_if_nothing_ever_accumulates \
-                   the_accumulator_saturates_instead_of_wrapping \
-                   a_forced_change_is_never_deferred_by_the_budget \
-                   a_busy_picture_is_paced_exactly_like_upstream_and_a_quiet_one_is_slowed \
-                   the_interval_is_filtered_fast_up_and_slow_down \
-                   a_quiet_picture_is_compared_in_full_and_a_busy_one_is_sampled \
-                   the_look_is_never_slower_than_the_probe_rate \
-                   the_tuning_knobs_reject_nonsense_and_keep_their_defaults \
-                   only_a_positive_number_turns_the_budget_on \
-                   the_sample_density_and_the_skip_guard_fall_back_to_their_defaults \
-                   the_sample_grid_is_page_aligned_and_density_one_reads_everything; do
-            if ! grep -qE "test ([a-zA-Z0-9_:]+::)?$t \.\.\. ok" diff-budget-tests.log; then
-              echo "MISSING OR FAILED: $t"
-              exit 1
-            fi
-          done
-          grep "test result:" diff-budget-tests.log
-
-      - name: Assert every runtime switch made it into the dmg
-        run: |
-          DYLIB=flutter/build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/liblibrustdesk.dylib
-          fail=0
-          # Every switch this build is meant to expose. The name has to survive in the binary, or the
-          # env var silently does nothing and the arm measures a path it was not meant to measure.
-          for name in RD_ENCODE_PIXBUF RD_NO_DEDUPE RD_LAZY_BGRA RD_LOAD_LOG RD_NO_REPEAT \
-                      RD_PIXBUF_NV12 RD_DEDUPE_ZC RD_DIFF_ACCUM RD_DIFF_SAMPLE RD_DIFF_MAX_SKIP \
-                      RD_DIFF_LOG RD_DIFF_SOFT RD_DIFF_PROBE_HZ RD_DIFF_MAX_FPS RD_DIFF_MIN_FPS \
-                      RD_FORCE_CODEC RD_REFUSE_LIMIT RUSTDESK_VT_ZEROCOPY \
-                      RD_LOG_SPLIT RD_VT_LATENCY RD_VT_FPS \
-                      FlutterRgbaRendererPluginOnPixelBuffer; do
-            n=$(strings -a "$DYLIB" | grep -cF "$name" || true)
-            echo "$name = $n"
-            if [ "$n" -eq 0 ]; then echo "MISSING SWITCH: $name"; fail=1; fi
-          done
-          # The paths themselves, so a build that lost a whole feature cannot pass on env names alone.
-          for marker in "[FRAME] " "[DEDUPE] " "encode path: CVPixelBuffer" "h264_videotoolbox" \
-                        "gpu frames wanted"; do
-            n=$(strings -a "$DYLIB" | grep -cF "$marker" || true)
-            echo "$marker = $n"
-            if [ "$n" -eq 0 ]; then echo "MISSING PATH: $marker"; fail=1; fi
-          done
-          echo "--- WARMUP first packet (expected 0: this pin does not carry the warm-up instrument) ---"
-          strings -a "$DYLIB" | grep -cF "WARMUP first packet" || true
-          exit $fail
-
+      # (fork-only) step "Test the switch gates without hwcodec" removed on this branch: the RD_* switch tests it
+      # censuses are measurement-branch additions and do not exist on the PR head this branch is based on.
+      # (fork-only) step "Test the change budget" removed on this branch: the RD_* switch tests it
+      # censuses are measurement-branch additions and do not exist on the PR head this branch is based on.
+      # (fork-only) "Assert every runtime switch made it into the dmg" removed: it censuses measurement-branch tests that the PR head does not carry.
       - name: Create unsigned dmg
         run: |
           create-dmg --icon "RustDesk.app" 200 190 --hide-extension "RustDesk.app" \
@@ -294,68 +223,8 @@ jobs:
 
       # The repeat-encode rule is pure logic, but the app crate compiles no #[cfg(test)] code in a
       # dmg build, so without this step a green run would say nothing about the test below.
-      - name: Test the repeat-encode rule
-        run: |
-          cargo test --locked --features hwcodec,flutter,unix-file-copy-paste --lib server::video_service::tests:: -- --nocapture
-
-      # The refusal bound and its RD_REFUSE_LIMIT override are the client half's arithmetic, and the
-      # dmg build compiles no #[cfg(test)] code, so this step is the only place they run.
-      - name: Test the refusal-streak bound and its override
-        run: |
-          cargo test --locked --features hwcodec,flutter,unix-file-copy-paste --lib client::io_loop::gpu_refuse_streak_tests:: -- --nocapture
-
-      # The switch gates are pure logic and the dmg build compiles no #[cfg(test)] code, so this step
-      # is the only place they run. The list is the same one the arm64 job uses: a switch missing from
-      # it reads as "not checked" in the best case.
-      - name: Test the switch gates without hwcodec
-        run: |
-          set -o pipefail
-          cargo test -p scrap --no-default-features _env -- --nocapture 2>&1 | tee env-tests.log
-          for t in no_dedupe_off_when_the_variable_is_absent \
-                   no_dedupe_only_the_exact_value_one_enables_it \
-                   off_when_the_variable_is_absent \
-                   only_the_exact_value_one_enables_it \
-                   lazy_bgra_stays_on_unless_switched_off \
-                   load_log_stays_on_unless_switched_off \
-                   no_repeat_only_the_exact_value_one_enables_it \
-                   nv12_capture_only_the_exact_value_one_enables_it \
-                   dedupe_zc_only_the_exact_value_one_enables_it \
-                   log_split_only_the_exact_value_one_enables_it; do
-            if ! grep -qE "test ([a-zA-Z0-9_:]+::)?$t \.\.\. ok" env-tests.log; then
-              echo "MISSING OR FAILED: $t"
-              exit 1
-            fi
-          done
-          grep "test result:" env-tests.log
-
-      # The change budget (RD_DIFF_ACCUM) and its sample grid are pure arithmetic, and a dmg build
-      # compiles no #[cfg(test)] code at all, so this step is the only place the rules run. `diff_` is
-      # the shared module prefix (`diff_budget_tests`, `diff_grid_tests`) and the greps name every test,
-      # so a filter that selects nothing fails here instead of passing quietly.
-      - name: Test the change budget
-        run: |
-          set -o pipefail
-          cargo test -p scrap --no-default-features diff_ -- --nocapture 2>&1 | tee diff-budget-tests.log
-          for t in the_budget_only_delivers_once_the_accumulated_change_covers_it \
-                   one_fully_changed_frame_is_worth_a_frame_on_its_own \
-                   the_skip_guard_fires_even_if_nothing_ever_accumulates \
-                   the_accumulator_saturates_instead_of_wrapping \
-                   a_forced_change_is_never_deferred_by_the_budget \
-                   a_busy_picture_is_paced_exactly_like_upstream_and_a_quiet_one_is_slowed \
-                   the_interval_is_filtered_fast_up_and_slow_down \
-                   a_quiet_picture_is_compared_in_full_and_a_busy_one_is_sampled \
-                   the_look_is_never_slower_than_the_probe_rate \
-                   the_tuning_knobs_reject_nonsense_and_keep_their_defaults \
-                   only_a_positive_number_turns_the_budget_on \
-                   the_sample_density_and_the_skip_guard_fall_back_to_their_defaults \
-                   the_sample_grid_is_page_aligned_and_density_one_reads_everything; do
-            if ! grep -qE "test ([a-zA-Z0-9_:]+::)?$t \.\.\. ok" diff-budget-tests.log; then
-              echo "MISSING OR FAILED: $t"
-              exit 1
-            fi
-          done
-          grep "test result:" diff-budget-tests.log
-
+      # (fork-only) "Test the repeat-encode rule" removed: it censuses measurement-branch tests that the PR head does not carry.
+      # (fork-only) "Test the refusal-streak bound and its override" removed: it censuses measurement-branch tests that the PR head does not carry.
       - name: Build rustdesk
         run: |
           MIN_MACOS_VERSION="12.3"
@@ -365,33 +234,7 @@ jobs:
           sed -i -e "s/MACOSX_DEPLOYMENT_TARGET = [0-9]*.[0-9]*;/MACOSX_DEPLOYMENT_TARGET = ${MIN_MACOS_VERSION};/" flutter/macos/Runner.xcodeproj/project.pbxproj
           ./build.py --flutter --hwcodec --unix-file-copy-paste --screencapturekit
 
-      - name: Assert every runtime switch made it into the dmg
-        run: |
-          DYLIB=flutter/build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/liblibrustdesk.dylib
-          fail=0
-          # Every switch this build is meant to expose. The name has to survive in the binary, or the
-          # env var silently does nothing and the arm measures a path it was not meant to measure.
-          for name in RD_ENCODE_PIXBUF RD_NO_DEDUPE RD_LAZY_BGRA RD_LOAD_LOG RD_NO_REPEAT \
-                      RD_PIXBUF_NV12 RD_DEDUPE_ZC RD_DIFF_ACCUM RD_DIFF_SAMPLE RD_DIFF_MAX_SKIP \
-                      RD_DIFF_LOG RD_DIFF_SOFT RD_DIFF_PROBE_HZ RD_DIFF_MAX_FPS RD_DIFF_MIN_FPS \
-                      RD_FORCE_CODEC RD_REFUSE_LIMIT RUSTDESK_VT_ZEROCOPY \
-                      RD_LOG_SPLIT RD_VT_LATENCY RD_VT_FPS \
-                      FlutterRgbaRendererPluginOnPixelBuffer; do
-            n=$(strings -a "$DYLIB" | grep -cF "$name" || true)
-            echo "$name = $n"
-            if [ "$n" -eq 0 ]; then echo "MISSING SWITCH: $name"; fail=1; fi
-          done
-          # The paths themselves, so a build that lost a whole feature cannot pass on env names alone.
-          for marker in "[FRAME] " "[DEDUPE] " "encode path: CVPixelBuffer" "h264_videotoolbox" \
-                        "gpu frames wanted"; do
-            n=$(strings -a "$DYLIB" | grep -cF "$marker" || true)
-            echo "$marker = $n"
-            if [ "$n" -eq 0 ]; then echo "MISSING PATH: $marker"; fail=1; fi
-          done
-          echo "--- WARMUP first packet (expected 0: this pin does not carry the warm-up instrument) ---"
-          strings -a "$DYLIB" | grep -cF "WARMUP first packet" || true
-          exit $fail
-
+      # (fork-only) "Assert every runtime switch made it into the dmg" removed: it censuses measurement-branch tests that the PR head does not carry.
       - name: Create unsigned dmg
         run: |
           create-dmg --icon "RustDesk.app" 200 190 --hide-extension "RustDesk.app" \
@@ -409,46 +252,6 @@ jobs:
   # caught by a build, and the dmg build takes ~50 minutes. This runs the wrapper's own smoke
   # test in ~2 minutes: it builds a BGRA CVPixelBuffer, pushes frames through the real
   # VTCompressionSession, and fails if no packet comes back.
-  encode-wrapper-smoke:
-    name: macOS encode wrapper smoke test
-    runs-on: macos-15
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout source code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          persist-credentials: false
+  # (fork-only) encode-wrapper-smoke job removed on this branch: it verifies the measurement branch's
+  # encode wrapper, not the decode-side consumer change under test here.
 
-      - name: Build libyuv for the PSNR guard
-        run: |
-          set -euo pipefail
-          git init -q "$RUNNER_TEMP/libyuv"
-          git -C "$RUNNER_TEMP/libyuv" fetch -q --depth=1 \
-            https://chromium.googlesource.com/libyuv/libyuv \
-            8d440c181c1bdc884c2d2d6d23a773ae51d178a1
-          git -C "$RUNNER_TEMP/libyuv" checkout -q FETCH_HEAD
-          cmake -S "$RUNNER_TEMP/libyuv" -B "$RUNNER_TEMP/libyuv/build" \
-            -DCMAKE_BUILD_TYPE=Release -DJPEG=OFF -DBUILD_SHARED_LIBS=OFF -DUNIT_TEST=OFF
-          cmake --build "$RUNNER_TEMP/libyuv/build" -j"$(sysctl -n hw.ncpu)"
-          LIB=$(find "$RUNNER_TEMP/libyuv/build" -name libyuv.a -print -quit)
-          test -n "$LIB"
-          mkdir -p "$RUNNER_TEMP/libyuv-prefix/lib" "$RUNNER_TEMP/libyuv-prefix/include"
-          cp "$LIB" "$RUNNER_TEMP/libyuv-prefix/lib/"
-          cp -R "$RUNNER_TEMP/libyuv/include/libyuv.h" "$RUNNER_TEMP/libyuv/include/libyuv" \
-            "$RUNNER_TEMP/libyuv-prefix/include/"
-
-      - name: Verify the wrapper (encode, submit CPU, PSNR against libyuv)
-        env:
-          # Hosted runners have no AppleM2ScalerCSCDriver. On 41004862543 that showed up as
-          # HEVC keys=0 while still decoding, and current/direct at 51.27/48.17 dB where real
-          # hardware gives 47.23/47.59. Keep the absolute 40 dB floor here (a missing BT.601
-          # tag lands at ~27.6 dB anywhere) and the tight 1.5 dB comparison on hardware.
-          STRICT: "0"
-        run: |
-          set -euo pipefail
-          export LIBYUV_PREFIX="$RUNNER_TEMP/libyuv-prefix"
-          # The wrapper lives in the hwcodec rev Cargo.toml pins, which this job never builds.
-          export HWCODEC_ROOT=$(scripts/hwcodec-encode-check/resolve-hwcodec-root.sh --fetch)
-          scripts/hwcodec-encode-check/verify-encode-zerocopy.sh
