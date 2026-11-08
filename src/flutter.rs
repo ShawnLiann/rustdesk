@@ -678,6 +678,10 @@ impl VideoRenderer {
     /// happens once per render type change instead of once per frame.
     #[cfg(all(target_os = "macos", feature = "hwcodec"))]
     pub fn on_pixelbuffer(&self, display: usize, pixelbuffer: &scrap::PixelBufferFrame) -> FrameTaken {
+        // Measurement switch: behave like a plugin build without the zero-copy entry point.
+        if crate::diag_net::plugin_nocopy_disabled() {
+            return FrameTaken::No;
+        }
         let Some(func) = &self.on_pixelbuffer_func else {
             return FrameTaken::No;
         };

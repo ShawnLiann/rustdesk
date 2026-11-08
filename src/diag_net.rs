@@ -27,6 +27,17 @@ pub fn drop_after_decode() -> bool {
     *ON.get_or_init(|| std::env::var("RD_DROP_AFTER_DECODE").map(|v| v == "1").unwrap_or(false))
 }
 
+/// `RD_PLUGIN_NOCOPY=0` makes the client refuse the plugin's zero-copy entry point, so every frame goes
+/// through the plugin's legacy RGBA path (`_markFrameAvaliable`, one full-frame memcpy) -- which is what a
+/// build pinned to a plugin *without* the entry point does by itself. Unset = take the zero-copy entry.
+///
+/// This exists so the plugin PR's own value can be measured inside a single build: the Rust side still
+/// decodes into a GPU frame either way, only the hand-off differs.
+pub fn plugin_nocopy_disabled() -> bool {
+    static OFF: OnceLock<bool> = OnceLock::new();
+    *OFF.get_or_init(|| std::env::var("RD_PLUGIN_NOCOPY").map(|v| v == "0").unwrap_or(false))
+}
+
 fn now_us() -> u64 {
     EPOCH.get_or_init(Instant::now).elapsed().as_micros() as u64
 }
