@@ -1623,6 +1623,14 @@ impl<T: InvokeUiSession> Remote<T> {
             if auto_fps < 1 {
                 auto_fps = 1;
             }
+            // RD_FPS_CAP=<n> pins the requested rate from above so an arm can be measured at a chosen fps.
+            // The config key `custom-fps` cannot do this on a direct connection (client.rs reads the
+            // session's option map, which only the UI fills), so a sweep needs its own lever. Unset = no-op.
+            if let Some(cap) = std::env::var("RD_FPS_CAP").ok().and_then(|v| v.parse::<usize>().ok()) {
+                if cap > 0 && auto_fps > cap {
+                    auto_fps = cap;
+                }
+            }
             if Some(auto_fps) != last_auto_fps {
                 let mut misc = Misc::new();
                 misc.set_option(OptionMessage {
@@ -1694,9 +1702,13 @@ impl<T: InvokeUiSession> Remote<T> {
     }
 
     async fn handle_msg_from_peer(&mut self, data: &[u8], peer: &mut Stream) -> bool {
+        // Where the per-frame budget goes before the decoder sees it; see `crate::diag_net`.
+        let diag_start = std::time::Instant::now();
         if let Ok(msg_in) = Message::parse_from_bytes(&data) {
+            let diag_parse = diag_start.elapsed();
             match msg_in.union {
                 Some(message::Union::VideoFrame(vf)) => {
+                    let diag_arm = std::time::Instant::now();
                     if !self.first_frame {
                         self.first_frame = true;
                         self.handler.close_success();
@@ -1711,6 +1723,7 @@ impl<T: InvokeUiSession> Remote<T> {
                         self.new_video_thread(display);
                     }
                     let Some(thread) = self.video_threads.get_mut(&display) else {
+                        crate::diag_net::record(diag_parse, diag_arm.elapsed(), data.len());
                         return true;
                     };
                     if Self::contains_key_frame(&vf) {
@@ -1727,6 +1740,7 @@ impl<T: InvokeUiSession> Remote<T> {
                             thread.video_sender.send(MediaData::VideoQueue).ok();
                         }
                     }
+                    crate::diag_net::record(diag_parse, diag_arm.elapsed(), data.len());
                 }
                 Some(message::Union::Hash(hash)) => {
                     if !self
