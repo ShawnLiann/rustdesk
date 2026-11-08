@@ -4118,13 +4118,15 @@ pub fn start_video_thread<F, T>(
                                     let pixelbuffer_output = handler.take_pixelbuffer();
                                     #[cfg(target_os = "macos")]
                                     let present_started = std::time::Instant::now();
-                                    video_callback(
-                                        display,
-                                        &mut handler.rgb,
-                                        handler.texture.texture,
-                                        pixelbuffer,
-                                        pixelbuffer_output,
-                                    );
+                                    if !crate::diag_net::drop_after_decode() {
+                                        video_callback(
+                                            display,
+                                            &mut handler.rgb,
+                                            handler.texture.texture,
+                                            pixelbuffer,
+                                            pixelbuffer_output,
+                                        );
+                                    }
                                     #[cfg(target_os = "macos")]
                                     {
                                         present_micros +=

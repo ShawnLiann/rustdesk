@@ -17,6 +17,16 @@ static EPOCH: OnceLock<Instant> = OnceLock::new();
 static WINDOW_START_US: AtomicU64 = AtomicU64::new(0);
 static PRINTING: AtomicBool = AtomicBool::new(false);
 
+/// `RD_DROP_AFTER_DECODE=1` decodes every frame and then throws it away instead of handing it to the UI.
+/// It prices the work that happens *after* `handle_frame`: the pixel copy, the texture upload and whatever
+/// rasters behind it. [DEC]'s decode= and present= together account for only about 4 of the 18.6 percentage
+/// points that zero-copy removes on an M2 client, so the remainder gets pinned down by taking that work out
+/// and measuring what is left. Unset = normal behaviour.
+pub fn drop_after_decode() -> bool {
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| std::env::var("RD_DROP_AFTER_DECODE").map(|v| v == "1").unwrap_or(false))
+}
+
 fn now_us() -> u64 {
     EPOCH.get_or_init(Instant::now).elapsed().as_micros() as u64
 }
