@@ -71,7 +71,12 @@ gstreamer-video = { version = "0.16", optional = true }
 zbus = { version = "3.15", optional = true }
 
 [dependencies.hwcodec]
-git = "https://github.com/rustdesk-org/hwcodec"
+# CI-ONLY PIN (not for the PR head): this commit consumes the API from hwcodec#53
+# (`decode_gpu` / `Decoded`), which is not on hwcodec master yet. Pinning the #53
+# head lets the macOS target compile so CI can verify the consumer; unpin to
+# rustdesk-org/hwcodec master once #53 merges. Tracked in closeout/state/dep-pins.json.
+git = "https://github.com/ShawnLiann/hwcodec"
+rev = "eb7920be15365ec4f6cc1eb4dbbc45c5ce5478d7"
 optional = true
 
 [target.'cfg(any(target_os = "windows", target_os = "linux"))'.dependencies]
