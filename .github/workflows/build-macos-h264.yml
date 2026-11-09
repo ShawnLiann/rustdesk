@@ -102,6 +102,15 @@ jobs:
           cargo update -p hwcodec
           grep -A3 'name = "hwcodec"' Cargo.lock | head -8
 
+      # (fork-only) The dmg build compiles no #[cfg(test)] code, so the four frame-size fitting
+      # tests in src/flutter.rs would never run. Placed before the build so a failure surfaces in
+      # minutes instead of after ~50. The grep makes an empty filter match a failure, not a pass.
+      - name: Test the frame-size fitting rule
+        run: |
+          set -o pipefail
+          cargo test --lib --features hwcodec -- flutter::tests 2>&1 | tee /tmp/flutter-tests.log
+          grep -qE '^test result: ok\. 4 passed' /tmp/flutter-tests.log
+
       - name: Build rustdesk
         run: |
           MIN_MACOS_VERSION="12.3"
@@ -225,6 +234,15 @@ jobs:
       # dmg build, so without this step a green run would say nothing about the test below.
       # (fork-only) "Test the repeat-encode rule" removed: it censuses measurement-branch tests that the PR head does not carry.
       # (fork-only) "Test the refusal-streak bound and its override" removed: it censuses measurement-branch tests that the PR head does not carry.
+      # (fork-only) The dmg build compiles no #[cfg(test)] code, so the four frame-size fitting
+      # tests in src/flutter.rs would never run. Placed before the build so a failure surfaces in
+      # minutes instead of after ~50. The grep makes an empty filter match a failure, not a pass.
+      - name: Test the frame-size fitting rule
+        run: |
+          set -o pipefail
+          cargo test --lib --features hwcodec -- flutter::tests 2>&1 | tee /tmp/flutter-tests.log
+          grep -qE '^test result: ok\. 4 passed' /tmp/flutter-tests.log
+
       - name: Build rustdesk
         run: |
           MIN_MACOS_VERSION="12.3"
