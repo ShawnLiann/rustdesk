@@ -113,21 +113,28 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Installing nasm failed.' }
           "C:\Program Files\NASM" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
+      # The lane pins the directory instead of reading `VCPKG_ROOT`: run-vcpkg's
+      # environment does not reach the cargo step, and scrap's build script then
+      # falls back to the vcpkg bundled with Visual Studio and misses the ports.
       - name: Setup vcpkg with GitHub Actions binary cache
         uses: lukka/run-vcpkg@v11
         with:
+          vcpkgDirectory: ${{ github.workspace }}/vcpkg
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
           doNotCache: false
 
       - name: Install vcpkg dependencies
         run: |
-          & "$env:VCPKG_ROOT/vcpkg.exe" install --triplet x64-windows-static --x-install-root="$env:VCPKG_ROOT/installed"
+          & "${{ github.workspace }}/vcpkg/vcpkg.exe" install --triplet x64-windows-static --x-install-root="${{ github.workspace }}/vcpkg/installed"
           if ($LASTEXITCODE -ne 0) {
             Get-ChildItem -Recurse "$env:VCPKG_ROOT" -Filter *.log | ForEach-Object { Write-Host $_.FullName; Get-Content $_.FullName -Tail 50 }
             throw 'vcpkg install failed.'
           }
 
       - name: cargo check -p scrap
+        env:
+          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+          VCPKGRS_TRIPLET: x64-windows-static
         run: |
           $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
           $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
@@ -137,6 +144,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'cargo check -p scrap failed on windows' }
 
       - name: cargo test -p scrap --lib --no-default-features
+        env:
+          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+          VCPKGRS_TRIPLET: x64-windows-static
         run: |
           $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
           $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
