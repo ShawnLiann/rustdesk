@@ -9,8 +9,12 @@ name: check scrap (fork-only)
 # This lane answers both on the exact head that is being proposed, and it lives
 # on the fork only -- it is never part of the PR.
 #
-# Trigger: workflow_dispatch on a ci/* branch. The file is not on the fork's
-# default branch, so a push trigger would never fire.
+# `libs/scrap`'s build script needs the vcpkg-provided codec headers on every
+# platform (libvpx, libyuv, ffmpeg), so each job installs the repo's own
+# vcpkg.json manifest first, exactly as upstream's linux job does.
+#
+# Trigger: push to ci/16732-full-* (workflow_dispatch cannot resolve a file that
+# is absent from the fork's default branch).
 
 on:
   push:
@@ -33,7 +37,7 @@ jobs:
   linux:
     name: linux (check + tests, no hwcodec)
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,20 +52,43 @@ jobs:
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgtk-3-dev \
             libpulse-dev libva-dev libvdpau-dev libxcb-randr0-dev \
             libxcb-shape0-dev libxcb-xfixes0-dev libxdo-dev libxfixes-dev \
-            nasm wget
+            nasm pkg-config wget
+
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v6
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup vcpkg with GitHub Actions binary cache
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: /opt/artifacts/vcpkg
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+          doNotCache: false
+
+      - name: Install vcpkg dependencies
+        run: |
+          if ! $VCPKG_ROOT/vcpkg install --x-install-root="$VCPKG_ROOT/installed"; then
+            find "${VCPKG_ROOT}/" -name "*.log" | while read -r f; do echo "$f:"; tail -n 50 "$f"; done
+            exit 1
+          fi
 
       - name: cargo check -p scrap
         run: cargo check -p scrap
 
       - name: cargo test -p scrap --lib --no-default-features
-        run: cargo test -p scrap --lib --no-default-features
+        run: |
+          cargo test -p scrap --lib --no-default-features 2>&1 | tee /tmp/nofeat.log
+          grep -q 'test result: ok' /tmp/nofeat.log
 
   windows:
     name: windows (check + tests, no hwcodec)
     runs-on: windows-2022
-    timeout-minutes: 60
+    timeout-minutes: 120
     defaults:
       run:
         shell: pwsh
@@ -71,7 +98,34 @@ jobs:
           submodules: recursive
           persist-credentials: false
 
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v6
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install NASM
+        run: |
+          choco install nasm -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Installing nasm failed.' }
+          "C:\Program Files\NASM" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Setup vcpkg with GitHub Actions binary cache
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+          doNotCache: false
+
+      - name: Install vcpkg dependencies
+        run: |
+          & "$env:VCPKG_ROOT/vcpkg.exe" install --x-install-root="$env:VCPKG_ROOT/installed"
+          if ($LASTEXITCODE -ne 0) {
+            Get-ChildItem -Recurse "$env:VCPKG_ROOT" -Filter *.log | ForEach-Object { Write-Host $_.FullName; Get-Content $_.FullName -Tail 50 }
+            throw 'vcpkg install failed.'
+          }
 
       - name: cargo check -p scrap
         run: |
@@ -94,7 +148,7 @@ jobs:
   macos:
     name: macos x86_64 (tests with and without hwcodec)
     runs-on: macos-15-intel
-    timeout-minutes: 90
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
         with:
@@ -109,6 +163,14 @@ jobs:
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install pkg-config and NASM
+        run: |
+          if ! command -v pkg-config &>/dev/null; then brew install pkg-config; fi
+          wget https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/macosx/nasm-2.16.03-macosx.zip
+          unzip -q nasm-2.16.03-macosx.zip
+          sudo cp nasm-2.16.03/nasm /usr/local/bin/nasm
+          nasm --version
 
       - name: Setup vcpkg with GitHub Actions binary cache
         uses: lukka/run-vcpkg@v11
