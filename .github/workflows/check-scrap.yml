@@ -13,6 +13,8 @@ name: check scrap (fork-only)
 # default branch, so a push trigger would never fire.
 
 on:
+  push:
+    branches: ['ci/16732-full-*']
   workflow_dispatch:
 
 permissions:
