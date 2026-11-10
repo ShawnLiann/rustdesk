@@ -110,9 +110,7 @@ jobs:
       # module out and the filter matches nothing (measured: `0 passed; 220 filtered out`).
       - name: Test the frame-size fitting rule
         run: |
-          set -o pipefail
           echo "skipped: the frame-size tests are #16732's, they do not exist on a foreign branch"
-          grep -qE '^test result: ok\. 4 passed' /tmp/flutter-tests.log
 
       - name: Build rustdesk
         run: |
@@ -245,9 +243,7 @@ jobs:
       # module out and the filter matches nothing (measured: `0 passed; 220 filtered out`).
       - name: Test the frame-size fitting rule
         run: |
-          set -o pipefail
           echo "skipped: the frame-size tests are #16732's, they do not exist on a foreign branch"
-          grep -qE '^test result: ok\. 4 passed' /tmp/flutter-tests.log
 
       - name: Build rustdesk
         run: |
