@@ -733,8 +733,25 @@ impl Decoder {
                 // feature, which needs a matching FFmpeg, so the split between
                 // the surface branch and the software branch is exercised by the
                 // macOS CI build rather than by `cargo test`.
+                // REPRO ONLY: same injected sequence as the pre-fix branch —
+                // force the answer to false, read it, then flip the session
+                // switch to true before the decoder runs.
+                #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+                if let Some(handle) = &self.gpu_frames_wanted {
+                    if std::env::var("RD_RACE_FLIP").map(|v| v == "1").unwrap_or(false) {
+                        handle.store(false, std::sync::atomic::Ordering::Relaxed);
+                        log::warn!("REPRO: gpu-frames-wanted forced to false");
+                    }
+                }
                 #[cfg(feature = "hwcodec")]
                 let want_gpu = self.gpu_frame_wanted();
+                #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+                if let Some(handle) = &self.gpu_frames_wanted {
+                    if std::env::var("RD_RACE_FLIP").map(|v| v == "1").unwrap_or(false) {
+                        handle.store(true, std::sync::atomic::Ordering::Relaxed);
+                        log::warn!("REPRO: gpu-frames-wanted forced to true after want_gpu was read");
+                    }
+                }
                 #[cfg(feature = "hwcodec")]
                 if let Some(decoder) = &mut self.h264_ram {
                     return Decoder::handle_hwram_video_frame(
