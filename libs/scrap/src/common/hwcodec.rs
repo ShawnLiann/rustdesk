@@ -414,6 +414,18 @@ impl HwRamDecoder {
         self.decoder.set_pixelbuffer_wanted(wanted);
     }
 
+    /// REPRO ONLY (fork branch, never upstreamed): force the shared switch to a
+    /// value without going through the session, so a caller can stage the
+    /// "GPU demand flips during decode" window deterministically.
+    #[cfg(target_os = "macos")]
+    pub fn repro_force_wanted(&mut self, value: bool) {
+        if std::env::var("RD_RACE_FLIP").map(|v| v == "1").unwrap_or(false) {
+            self.pixelbuffer_wanted
+                .store(value, std::sync::atomic::Ordering::Relaxed);
+            log::warn!("REPRO: gpu-frames-wanted forced to {value}");
+        }
+    }
+
     /// Take the GPU frame produced by the last `decode` call, if any.
     ///
     /// `decode` hands out a mutable borrow, so callers read the GPU frame first

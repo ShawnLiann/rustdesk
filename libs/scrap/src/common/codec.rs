@@ -849,10 +849,16 @@ impl Decoder {
             // * requested -- the surface has to be taken while no borrow of the
             //   decoder is alive, so decode first and then read the images back
             //   through `last_frame_images`; the extra Vec buys the hand-off.
+            // REPRO ONLY: force the answer the consumer sees to false, then flip
+            // it to true before the decoder reads the same switch itself.
+            #[cfg(target_os = "macos")]
+            decoder.repro_force_wanted(false);
             #[cfg(target_os = "macos")]
             let gpu_wanted = decoder.pixelbuffer_wanted();
             #[cfg(not(target_os = "macos"))]
             let gpu_wanted = false;
+            #[cfg(target_os = "macos")]
+            decoder.repro_force_wanted(true);
             if !gpu_wanted {
                 let mut software_ok = false;
                 for image in decoder.decode(&h264.data)? {
