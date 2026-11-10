@@ -127,11 +127,24 @@ jobs:
             throw 'vcpkg install failed.'
           }
 
+      - name: Resolve the vcpkg root scrap's build script will use
+        run: |
+          # scrap/build.rs appends the triplet to VCPKG_INSTALLED_ROOT when it is set,
+          # and prefers it over VCPKG_ROOT. The windows-2022 image exports the Visual
+          # Studio one, which has no deps, so point it at ours and make sure the static
+          # triplet really is there.
+          $env:VCPKG_INSTALLED_ROOT = "$env:VCPKG_ROOT\installed"
+          $hdr = "$env:VCPKG_INSTALLED_ROOT\x64-windows-static\include\vpx\vp8.h"
+          if (-not (Test-Path $hdr)) {
+            & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows-static --x-install-root="$env:VCPKG_INSTALLED_ROOT"
+            if ($LASTEXITCODE -ne 0) { throw 'installing the x64-windows-static triplet failed.' }
+          }
+          if (-not (Test-Path $hdr)) { throw "vpx headers still missing at $hdr" }
+          Write-Host "vpx headers: $hdr"
+          "VCPKG_INSTALLED_ROOT=$env:VCPKG_INSTALLED_ROOT" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: cargo check -p scrap
         run: |
-          # The VS-bundled vcpkg exports VCPKG_INSTALLED_ROOT, and scrap's build
-          # script prefers it over VCPKG_ROOT; ours is the one with the deps.
-          Remove-Item Env:VCPKG_INSTALLED_ROOT -ErrorAction SilentlyContinue
           $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
           $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           if (-not $vs) { throw 'MSVC x64 tools are missing.' }
@@ -141,7 +154,6 @@ jobs:
 
       - name: cargo test -p scrap --lib --no-default-features
         run: |
-          Remove-Item Env:VCPKG_INSTALLED_ROOT -ErrorAction SilentlyContinue
           $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
           $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           if (-not $vs) { throw 'MSVC x64 tools are missing.' }
