@@ -129,6 +129,9 @@ jobs:
 
       - name: cargo check -p scrap
         run: |
+          # The VS-bundled vcpkg exports VCPKG_INSTALLED_ROOT, and scrap's build
+          # script prefers it over VCPKG_ROOT; ours is the one with the deps.
+          Remove-Item Env:VCPKG_INSTALLED_ROOT -ErrorAction SilentlyContinue
           $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
           $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           if (-not $vs) { throw 'MSVC x64 tools are missing.' }
@@ -138,6 +141,7 @@ jobs:
 
       - name: cargo test -p scrap --lib --no-default-features
         run: |
+          Remove-Item Env:VCPKG_INSTALLED_ROOT -ErrorAction SilentlyContinue
           $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
           $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           if (-not $vs) { throw 'MSVC x64 tools are missing.' }
