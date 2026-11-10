@@ -121,7 +121,7 @@ jobs:
 
       - name: Install vcpkg dependencies
         run: |
-          & "$env:VCPKG_ROOT/vcpkg.exe" install --x-install-root="$env:VCPKG_ROOT/installed"
+          & "$env:VCPKG_ROOT/vcpkg.exe" install --triplet x64-windows-static --x-install-root="$env:VCPKG_ROOT/installed"
           if ($LASTEXITCODE -ne 0) {
             Get-ChildItem -Recurse "$env:VCPKG_ROOT" -Filter *.log | ForEach-Object { Write-Host $_.FullName; Get-Content $_.FullName -Tail 50 }
             throw 'vcpkg install failed.'
