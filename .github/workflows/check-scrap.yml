@@ -113,11 +113,15 @@ jobs:
       - name: Setup vcpkg with GitHub Actions binary cache
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgDirectory: /opt/artifacts/vcpkg
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+          doNotCache: false
 
       - name: Install vcpkg dependencies
-        run: $VCPKG_ROOT/vcpkg install --x-install-root="$VCPKG_ROOT/installed"
+        run: |
+          if ! $VCPKG_ROOT/vcpkg install --x-install-root="$VCPKG_ROOT/installed"; then
+            find "${VCPKG_ROOT}/" -name "*.log" | while read -r f; do echo "$f:"; tail -n 50 "$f"; done
+            exit 1
+          fi
 
       # The unit tests in libs/scrap are collected by a plain `cargo test`; they
       # were previously behind the `hwcodec` feature gate and were therefore run
