@@ -1,0 +1,131 @@
+name: check scrap (fork-only)
+
+# Fork-only evidence lane for the macos-zerocopy delivery line.
+#
+# Upstream's ci.yml has every Windows target and the whole test step commented
+# out, so two questions cannot be answered on the PR itself:
+#   * does `libs/scrap` still compile on Windows and Linux?
+#   * do its unit tests actually run anywhere?
+# This lane answers both on the exact head that is being proposed, and it lives
+# on the fork only -- it is never part of the PR.
+#
+# Trigger: workflow_dispatch on a ci/* branch. The file is not on the fork's
+# default branch, so a push trigger would never fire.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+  VCPKG_COMMIT_ID: "9e593bb18ea69cc5095e012465dcd675a822ed0d"
+
+jobs:
+  linux:
+    name: linux (check + tests, no hwcodec)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Install prerequisites
+        run: |
+          sudo apt-get -y update
+          sudo apt-get install -y \
+            clang cmake curl gcc git g++ libasound2-dev libunwind-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libgtk-3-dev \
+            libpulse-dev libva-dev libvdpau-dev libxcb-randr0-dev \
+            libxcb-shape0-dev libxcb-xfixes0-dev libxdo-dev libxfixes-dev \
+            nasm wget
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: cargo check -p scrap
+        run: cargo check -p scrap
+
+      - name: cargo test -p scrap --lib --no-default-features
+        run: cargo test -p scrap --lib --no-default-features
+
+  windows:
+    name: windows (check + tests, no hwcodec)
+    runs-on: windows-2022
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: cargo check -p scrap
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
+          $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vs) { throw 'MSVC x64 tools are missing.' }
+          & "$vs/Common7/Tools/Launch-VsDevShell.ps1" -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
+          cargo check -p scrap
+          if ($LASTEXITCODE -ne 0) { throw 'cargo check -p scrap failed on windows' }
+
+      - name: cargo test -p scrap --lib --no-default-features
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
+          $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vs) { throw 'MSVC x64 tools are missing.' }
+          & "$vs/Common7/Tools/Launch-VsDevShell.ps1" -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
+          cargo test -p scrap --lib --no-default-features
+          if ($LASTEXITCODE -ne 0) { throw 'cargo test -p scrap failed on windows' }
+
+  macos:
+    name: macos x86_64 (tests with and without hwcodec)
+    runs-on: macos-15-intel
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v6
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup vcpkg with GitHub Actions binary cache
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgDirectory: /opt/artifacts/vcpkg
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+
+      - name: Install vcpkg dependencies
+        run: $VCPKG_ROOT/vcpkg install --x-install-root="$VCPKG_ROOT/installed"
+
+      # The unit tests in libs/scrap are collected by a plain `cargo test`; they
+      # were previously behind the `hwcodec` feature gate and were therefore run
+      # by no CI job. Both lanes run them, so a missing collection cannot pass.
+      - name: cargo test -p scrap --lib --no-default-features
+        run: |
+          cargo test -p scrap --lib --no-default-features 2>&1 | tee /tmp/nofeat.log
+          grep -q 'test result: ok' /tmp/nofeat.log
+
+      - name: cargo test -p scrap --lib --features hwcodec
+        run: |
+          cargo test -p scrap --lib --features hwcodec 2>&1 | tee /tmp/hw.log
+          grep -q 'test result: ok' /tmp/hw.log
