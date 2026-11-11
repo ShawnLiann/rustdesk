@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - ci/16732-gatefix-20261110
+      - ci/16732-sizeadopt-20261111
 
 env:
   MAC_RUST_VERSION: "1.81"
