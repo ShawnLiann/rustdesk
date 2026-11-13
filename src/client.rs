@@ -2691,6 +2691,7 @@ impl VideoHandler {
         vf: VideoFrame,
         pixelbuffer: &mut bool,
         chroma: &mut Option<Chroma>,
+        surface: &mut scrap::PixelBufferOutput,
     ) -> ResultType<bool> {
         let format = CodecFormat::from(&vf);
         if format != self.decoder.format() {
@@ -2698,12 +2699,19 @@ impl VideoHandler {
         }
         match &vf.union {
             Some(frame) => {
+                // Asked per frame: a render-type change mid-session needs no rebuild.
+                #[cfg(all(target_os = "macos", feature = "hwcodec", feature = "flutter"))]
+                let want_gpu = use_texture_render() && crate::flutter::plugin_takes_pixelbuffer();
+                #[cfg(not(all(target_os = "macos", feature = "hwcodec", feature = "flutter")))]
+                let want_gpu = false;
                 let res = self.decoder.handle_video_frame(
                     frame,
                     &mut self.rgb,
                     &mut self.texture,
                     pixelbuffer,
                     chroma,
+                    want_gpu,
+                    surface,
                 );
                 if res.as_ref().is_ok_and(|x| *x) {
                     self.fail_counter = 0;
@@ -4000,7 +4008,8 @@ pub fn start_video_thread<F, T>(
     discard_queue: Arc<RwLock<bool>>,
     video_callback: F,
 ) where
-    F: 'static + FnMut(usize, &mut scrap::ImageRgb, *mut c_void, bool) + Send,
+    F: 'static + FnMut(usize, &mut scrap::ImageRgb, *mut c_void, bool, scrap::PixelBufferOutput)
+        + Send,
     T: InvokeUiSession,
 {
     let mut video_callback = video_callback;
@@ -4055,14 +4064,21 @@ pub fn start_video_thread<F, T>(
                         if let Some(handler) = video_handler.as_mut() {
                             let mut pixelbuffer = true;
                             let mut tmp_chroma = None;
+                            let mut pixelbuffer_output = None;
                             let format_changed = handler.decoder.format() != format;
-                            match handler.handle_frame(vf, &mut pixelbuffer, &mut tmp_chroma) {
+                            match handler.handle_frame(
+                                vf,
+                                &mut pixelbuffer,
+                                &mut tmp_chroma,
+                                &mut pixelbuffer_output,
+                            ) {
                                 Ok(true) => {
                                     video_callback(
                                         display,
                                         &mut handler.rgb,
                                         handler.texture.texture,
                                         pixelbuffer,
+                                        pixelbuffer_output,
                                     );
 
                                     // chroma

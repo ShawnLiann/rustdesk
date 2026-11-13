@@ -670,7 +670,6 @@ impl Decoder {
                     *_pixelbuffer = false;
                     return Decoder::handle_vram_video_frame(decoder, h264s, _texture);
                 }
-                // Per call: the decoder skips its software transfer while handing a surface out.
                 #[cfg(feature = "hwcodec")]
                 if let Some(decoder) = &mut self.h264_ram {
                     return Decoder::handle_hwram_video_frame(
@@ -794,19 +793,24 @@ impl Decoder {
         let mut ret = false;
         // The slot belongs to this batch: the `?` below can return mid-batch.
         *pixelbuffer = None;
+        #[cfg(not(target_os = "macos"))]
+        let _ = want_gpu;
         for h264 in frames.frames.iter() {
-            for image in decoder.decode_with_gpu(&h264.data, want_gpu)? {
-                // TODO: just process the last frame
-                #[cfg(target_os = "macos")]
-                if let Some(frame) = image.pixelbuffer() {
-                    // Metadata only: the recorder sizes its output from `ImageRgb`, which this path never fills.
-                    rgb.w = frame.width() as usize;
-                    rgb.h = frame.height() as usize;
-                    *pixelbuffer = Some(frame);
-                    ret = true;
-                    continue;
-                }
-                // The last decoded picture wins: a later software frame clears the slot.
+            #[cfg(target_os = "macos")]
+            let (images, surface) = decoder.decode_gpu(&h264.data, want_gpu)?;
+            #[cfg(not(target_os = "macos"))]
+            let images = decoder.decode(&h264.data)?;
+            // A call that delivered a surface has no software frames: present it, do not convert it.
+            #[cfg(target_os = "macos")]
+            if let Some(frame) = surface {
+                // Metadata only: the recorder sizes its output from `ImageRgb`, which this path never fills.
+                rgb.w = frame.width() as usize;
+                rgb.h = frame.height() as usize;
+                *pixelbuffer = Some(frame);
+                ret = true;
+                continue;
+            }
+            for image in images {
                 ret = present_software(pixelbuffer, image.to_fmt(rgb, i420).is_ok()) || ret;
             }
         }
@@ -878,8 +882,7 @@ impl Decoder {
     }
 }
 
-/// Clear the surface slot when this packet produced a software picture: the newest
-/// picture owns it, and an older surface must not be painted over it.
+/// The newest picture owns the slot: a software picture clears an earlier packet's surface.
 #[cfg(any(feature = "hwcodec", test))]
 fn present_software<T>(pixelbuffer: &mut Option<T>, software_ok: bool) -> bool {
     if software_ok {

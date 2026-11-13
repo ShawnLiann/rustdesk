@@ -2912,8 +2912,24 @@ impl<T: InvokeUiSession> Remote<T> {
             move |display: usize,
                   data: &mut scrap::ImageRgb,
                   _texture: *mut c_void,
-                  pixelbuffer: bool| {
+                  pixelbuffer: bool,
+                  pixelbuffer_output: scrap::PixelBufferOutput| {
                 *frame_count.write().unwrap() += 1;
+                #[cfg(all(target_os = "macos", feature = "flutter", feature = "hwcodec"))]
+                if let Some(gpu_frame) = &pixelbuffer_output {
+                    if handler.on_pixelbuffer(display, gpu_frame) {
+                        return;
+                    }
+                    // Nobody took the surface, and `data` holds an earlier frame's pixels:
+                    // pushing them would flash the previous picture, so drop the frame.
+                    hbb_common::throttled_log!(
+                        std::time::Duration::from_secs(5),
+                        warn,
+                        "display #{display}: decoded GPU frame refused by the render path, dropping it instead of pushing stale pixels"
+                    );
+                    return;
+                }
+                let _ = &pixelbuffer_output;
                 if pixelbuffer {
                     handler.on_rgba(display, data);
                 } else {

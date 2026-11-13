@@ -250,6 +250,22 @@ enum RenderType {
     Texture,
 }
 
+#[cfg(all(target_os = "macos", feature = "hwcodec"))]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum FrameTaken {
+    /// Drop the frame: the decoder skipped its software transfer, so there are no pixels.
+    No,
+    Yes,
+    YesNewRenderType,
+}
+
+/// Mirrors `on_rgba`'s size check: `(0, 0)` is unknown, any other size must match. The size
+/// lags a resolution change; presenting anyway shears rows (texture rebuilt, layout not).
+#[cfg(any(all(target_os = "macos", feature = "hwcodec"), test))]
+fn pixelbuffer_fits_session(session: (usize, usize), width: i32, height: i32) -> bool {
+    session == (0, 0) || (session.0 == width as usize && session.1 == height as usize)
+}
+
 #[derive(Clone)]
 pub struct FlutterHandler {
     // ui session id -> display handler data
@@ -296,6 +312,36 @@ pub type FlutterGpuTextureRendererPluginCApiSetTexture =
 #[cfg(feature = "vram")]
 pub type FlutterGpuTextureRendererPluginCApiGetAdapterLuid = unsafe extern "C" fn() -> i64;
 
+/// Zero-copy entry point; the plugin borrows `pixel_buffer` for the duration of the call.
+#[cfg(target_os = "macos")]
+pub type FlutterRgbaRendererPluginOnPixelBuffer =
+    unsafe extern "C" fn(*mut c_void, *mut c_void, i32, i32, u32) -> i32;
+
+#[cfg(all(target_os = "macos", feature = "hwcodec"))]
+lazy_static::lazy_static! {
+    /// An older plugin does not export the entry point, and then RGBA stays in place.
+    static ref PIXELBUFFER_ENTRY_POINT: bool = {
+        let found = match &*TEXTURE_RGBA_RENDERER_PLUGIN {
+            Ok(lib) => unsafe {
+                lib.symbol::<FlutterRgbaRendererPluginOnPixelBuffer>(
+                    "FlutterRgbaRendererPluginOnPixelBuffer",
+                )
+                .is_ok()
+            },
+            Err(_) => false,
+        };
+        if !found {
+            log::info!("texture_rgba_renderer exports no pixel buffer entry point; RGBA stays");
+        }
+        found
+    };
+}
+
+#[cfg(all(target_os = "macos", feature = "hwcodec"))]
+pub fn plugin_takes_pixelbuffer() -> bool {
+    *PIXELBUFFER_ENTRY_POINT
+}
+
 pub(super) type TextureRgbaPtr = usize;
 
 struct DisplaySessionInfo {
@@ -314,6 +360,8 @@ struct VideoRenderer {
     map_display_sessions: Arc<RwLock<HashMap<usize, DisplaySessionInfo>>>,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     on_rgba_func: Option<Symbol<'static, FlutterRgbaRendererPluginOnRgba>>,
+    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+    on_pixelbuffer_func: Option<Symbol<'static, FlutterRgbaRendererPluginOnPixelBuffer>>,
     #[cfg(feature = "vram")]
     on_texture_func: Option<Symbol<'static, FlutterGpuTextureRendererPluginCApiSetTexture>>,
 }
@@ -361,11 +409,31 @@ impl Default for VideoRenderer {
             }
         };
 
+        #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+        let on_pixelbuffer_func = match &*TEXTURE_RGBA_RENDERER_PLUGIN {
+            Ok(lib) => {
+                match unsafe {
+                    lib.symbol::<FlutterRgbaRendererPluginOnPixelBuffer>(
+                        "FlutterRgbaRendererPluginOnPixelBuffer",
+                    )
+                } {
+                    Ok(sym) => Some(sym),
+                    Err(e) => {
+                        log::info!("texture rgba plugin has no zero-copy entry point, {e}");
+                        None
+                    }
+                }
+            }
+            Err(_) => None,
+        };
+
         Self {
             map_display_sessions: Default::default(),
             is_support_multi_ui_session: false,
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             on_rgba_func,
+            #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+            on_pixelbuffer_func,
             #[cfg(feature = "vram")]
             on_texture_func,
         }
@@ -548,6 +616,62 @@ impl VideoRenderer {
         } else {
             false
         }
+    }
+
+    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+    pub fn on_pixelbuffer(&self, display: usize, frame: &scrap::PixelBufferFrame) -> FrameTaken {
+        let Some(func) = &self.on_pixelbuffer_func else {
+            return FrameTaken::No;
+        };
+        let mut write_lock = self.map_display_sessions.write().unwrap();
+        let opt_info = if !self.is_support_multi_ui_session {
+            write_lock.values_mut().next()
+        } else {
+            write_lock.get_mut(&display)
+        };
+        let Some(info) = opt_info else {
+            return FrameTaken::No;
+        };
+        if info.texture_rgba_ptr == usize::default() {
+            return FrameTaken::No;
+        }
+        if !pixelbuffer_fits_session(info.size, frame.width(), frame.height()) {
+            hbb_common::throttled_log!(
+                std::time::Duration::from_secs(5),
+                debug,
+                "display #{display}: refusing GPU frame ({}x{}) for session size ({}x{})",
+                frame.width(),
+                frame.height(),
+                info.size.0,
+                info.size.1
+            );
+            return FrameTaken::No;
+        }
+        let accepted = unsafe {
+            func(
+                info.texture_rgba_ptr as *mut c_void,
+                frame.as_ptr(),
+                frame.width(),
+                frame.height(),
+                frame.pixfmt(),
+            )
+        } != 0;
+        if !accepted {
+            return FrameTaken::No;
+        }
+        // Deliberately does not adopt the frame size into `info.size`, matching
+        // `on_rgba`: adopting turns a size that is merely late into one that is wrong.
+        if info.notify_render_type == Some(RenderType::PixelBuffer) {
+            return FrameTaken::Yes;
+        }
+        log::info!(
+            "display #{display}: plugin accepted the decoded GPU frame directly ({},{}, pixfmt {})",
+            frame.width(),
+            frame.height(),
+            frame.pixfmt()
+        );
+        info.notify_render_type = Some(RenderType::PixelBuffer);
+        FrameTaken::YesNewRenderType
     }
 
     pub fn reset_all_display_render_type(&self) {
@@ -895,6 +1019,31 @@ impl InvokeUiSession for FlutterHandler {
                 }
             }
         }
+    }
+
+    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+    fn on_pixelbuffer(&self, display: usize, pixelbuffer: &scrap::PixelBufferFrame) -> bool {
+        if !self.use_texture_render.load(Ordering::Relaxed) {
+            return false;
+        }
+        let mut delivered = false;
+        for (_, session) in self.session_handlers.read().unwrap().iter() {
+            match session.renderer.on_pixelbuffer(display, pixelbuffer) {
+                FrameTaken::No => {}
+                taken => {
+                    if taken == FrameTaken::YesNewRenderType {
+                        if let Some(stream) = &session.event_stream {
+                            // `false`, not `true`: on macOS the Flutter side drops the event for
+                            // `true` and then never runs onEvent2UIRgba(), which dismisses the
+                            // "waiting for image" dialog.
+                            stream.add(EventToUI::Texture(display, false));
+                        }
+                    }
+                    delivered = true;
+                }
+            }
+        }
+        delivered
     }
 
     fn set_peer_info(&self, pi: &PeerInfo) {
@@ -2426,5 +2575,32 @@ pub(super) mod async_tasks {
             super::APP_TYPE_MAIN,
             serde_json::ser::to_string(&data).unwrap_or("".to_owned()),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pixelbuffer_fits_session;
+
+    #[test]
+    fn unset_session_accepts_the_first_frame() {
+        assert!(pixelbuffer_fits_session((0, 0), 2944, 1656));
+    }
+
+    #[test]
+    fn matching_size_is_presented() {
+        assert!(pixelbuffer_fits_session((2944, 1656), 2944, 1656));
+    }
+
+    #[test]
+    fn resolution_change_race_is_refused() {
+        assert!(!pixelbuffer_fits_session((4096, 2304), 2944, 1656));
+        assert!(!pixelbuffer_fits_session((2944, 1656), 4096, 2304));
+    }
+
+    #[test]
+    fn either_dimension_alone_is_enough_to_refuse() {
+        assert!(!pixelbuffer_fits_session((2944, 1656), 2944, 1657));
+        assert!(!pixelbuffer_fits_session((2944, 1656), 2943, 1656));
     }
 }
