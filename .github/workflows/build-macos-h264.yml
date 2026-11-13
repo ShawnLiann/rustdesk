@@ -147,7 +147,7 @@ jobs:
           # env var silently does nothing and the arm measures a path it was not meant to measure.
           for name in RD_ENCODE_PIXBUF RD_NO_DEDUPE RD_LAZY_BGRA RD_LOAD_LOG RD_NO_REPEAT \
                       RD_PIXBUF_NV12 RD_DEDUPE_ZC RD_FORCE_CODEC RD_REFUSE_LIMIT RUSTDESK_VT_ZEROCOPY \
-                      RD_LOG_SPLIT RD_VT_LATENCY RD_VT_FPS \
+                      RD_LOG_SPLIT RD_VT_LATENCY RD_VT_FPS RD_SOFT_HEVC_DEC \
                       FlutterRgbaRendererPluginOnPixelBuffer; do
             n=$(strings -a "$DYLIB" | grep -cF "$name" || true)
             echo "$name = $n"
