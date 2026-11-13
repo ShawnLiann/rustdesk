@@ -804,26 +804,9 @@ pub fn check_available_hwcodec() -> String {
     let vram_string = vram.2;
     #[cfg(not(feature = "vram"))]
     let vram_string = "".to_owned();
-    #[allow(unused_mut)]
-    let mut ram_decode = Decoder::available_decoders();
-    // Local measurement switch (RD_SOFT_HEVC_DEC). A Mac without a hardware HEVC decoder
-    // advertises no H.265 decoder at all, so an H.265 run leaves the client on a black screen and
-    // a broken host bitstream goes unnoticed. Advertising the native libavcodec decoder is enough
-    // to view the stream; the client pays a full software decode. Measurement builds only.
-    #[cfg(target_os = "macos")]
-    if std::env::var("RD_SOFT_HEVC_DEC").is_ok()
-        && !ram_decode.iter().any(|c| c.format == DataFormat::H265)
-    {
-        ram_decode.push(CodecInfo {
-            name: "hevc".to_owned(),
-            format: DataFormat::H265,
-            priority: hwcodec::ffmpeg_ram::Priority::Good as _,
-            ..Default::default()
-        });
-    }
     let c = HwCodecConfig {
         ram_encode: Encoder::available_encoders(ctx, Some(vram_string)),
-        ram_decode,
+        ram_decode: Decoder::available_decoders(),
         #[cfg(feature = "vram")]
         vram_encode: vram.0,
         #[cfg(feature = "vram")]
