@@ -367,8 +367,24 @@ impl HwRamDecoder {
             }
         }
     }
+
     pub fn decode<'a>(&'a mut self, data: &[u8]) -> ResultType<Vec<HwRamDecoderImage<'a>>> {
         match self.decoder.decode(data) {
+            Ok(v) => Ok(v.iter().map(|f| HwRamDecoderImage { frame: f }).collect()),
+            Err(e) => Err(anyhow!(e)),
+        }
+    }
+
+    /// Decode one packet, asking the decoder for a GPU surface when `want_gpu` is
+    /// set. `want_gpu` has to arrive with the packet: the decoder decides during
+    /// the call whether to skip its software transfer, so what it produced is read
+    /// back from the frames, never inferred from the argument.
+    pub fn decode_with_gpu<'a>(
+        &'a mut self,
+        data: &[u8],
+        want_gpu: bool,
+    ) -> ResultType<Vec<HwRamDecoderImage<'a>>> {
+        match self.decoder.decode_gpu(data, want_gpu) {
             Ok(v) => Ok(v.iter().map(|f| HwRamDecoderImage { frame: f }).collect()),
             Err(e) => Err(anyhow!(e)),
         }
@@ -380,6 +396,12 @@ pub struct HwRamDecoderImage<'a> {
 }
 
 impl HwRamDecoderImage<'_> {
+    /// The GPU surface this frame was delivered as; such a frame has no software
+    /// planes, so it must be presented instead of being converted.
+    #[cfg(target_os = "macos")]
+    pub fn pixelbuffer(&self) -> Option<crate::PixelBufferFrame> {
+        self.frame.pixelbuffer.clone()
+    }
     // rgb [in/out] fmt and stride must be set in ImageRgb
     pub fn to_fmt(&self, rgb: &mut ImageRgb, i420: &mut Vec<u8>) -> ResultType<()> {
         let frame = self.frame;
@@ -391,6 +413,7 @@ impl HwRamDecoderImage<'_> {
         let bytes_per_row = (rgb.w * 4 + dst_align - 1) & !(dst_align - 1);
         rgb.raw.resize(rgb.h * bytes_per_row, 0);
         match frame.pixfmt {
+            AVPixelFormat::AV_PIX_FMT_VIDEOTOOLBOX => bail!("frame was delivered as a surface"),
             AVPixelFormat::AV_PIX_FMT_NV12 => {
                 // I420ToARGB is much faster than NV12ToARGB in tests on Windows
                 if cfg!(windows) {

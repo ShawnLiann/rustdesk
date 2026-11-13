@@ -24,3 +24,11 @@ pub mod dxgi;
 pub mod android;
 
 mod common;
+
+/// GPU frame of one decode call: `Some` must be presented instead of the software pixels.
+#[cfg(all(target_os = "macos", feature = "hwcodec"))]
+pub use ::hwcodec::ffmpeg_ram::pixelbuffer::PixelBufferFrame;
+#[cfg(all(target_os = "macos", feature = "hwcodec"))]
+pub type PixelBufferOutput = Option<::hwcodec::ffmpeg_ram::pixelbuffer::PixelBufferFrame>;
+#[cfg(not(all(target_os = "macos", feature = "hwcodec")))]
+pub type PixelBufferOutput = Option<std::convert::Infallible>;
