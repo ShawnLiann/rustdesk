@@ -300,3 +300,9 @@ debug = 1
 # enum check aborts on them (release builds never had the check).
 [profile.dev.package.sciter-rs]
 debug-assertions = false
+
+# (carrier only) Our consumer calls hwcodec's macOS decode_gpu / Decoded surface, which lives on
+# hwcodec#53 (head = ShawnLiann:pr/macos-pixelbuffer-v2 @ 3b3589ee). rustdesk-org master does not
+# have it yet, so the carrier build patches it in; the PR branch itself never carries this.
+[patch."https://github.com/rustdesk-org/hwcodec"]
+hwcodec = { git = "https://github.com/ShawnLiann/hwcodec", branch = "pr/macos-pixelbuffer-v2" }
