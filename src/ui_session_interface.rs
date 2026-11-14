@@ -1712,6 +1712,76 @@ pub struct SurfaceSwitches {
     /// bytes instead of showing the same stale picture forever. Set again when
     /// the user changes the option.
     pub usable: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Whether some display has a texture registered right now. Asking before
+    /// that loses the frame: the decoder has already skipped its software copy.
+    pub consumer_ready: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl SurfaceSwitches {
+    /// The per-frame gate: three relaxed loads, no lock, no copy of any flag.
+    ///
+    /// Platform independent on purpose, so the rule and the sequence a refusal
+    /// starts are testable where the CI job runs.
+    pub fn wants_surface(&self) -> bool {
+        scrap::codec::should_request_surface(
+            self.draw_through_texture
+                .load(std::sync::atomic::Ordering::Relaxed),
+            self.usable.load(std::sync::atomic::Ordering::Relaxed),
+            self.consumer_ready
+                .load(std::sync::atomic::Ordering::Relaxed),
+        )
+    }
+}
+
+#[cfg(test)]
+mod surface_switch_tests {
+    use super::SurfaceSwitches;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    fn switches(draw: bool, usable: bool, ready: bool) -> SurfaceSwitches {
+        SurfaceSwitches {
+            draw_through_texture: Arc::new(AtomicBool::new(draw)),
+            usable: Arc::new(AtomicBool::new(usable)),
+            consumer_ready: Arc::new(AtomicBool::new(ready)),
+        }
+    }
+
+    #[test]
+    fn one_refusal_returns_the_next_frame_to_software() {
+        let s = switches(true, true, true);
+        assert!(s.wants_surface(), "this frame asks for a surface");
+        // what the renderer does when it cannot present
+        s.usable.store(false, Ordering::Relaxed);
+        assert!(!s.wants_surface(), "the next frame must ask for bytes");
+    }
+
+    #[test]
+    fn a_refusal_is_not_forgotten() {
+        let s = switches(true, true, true);
+        s.usable.store(false, Ordering::Relaxed);
+        for _ in 0..60 {
+            assert!(!s.wants_surface(), "a streak counter would re-enable here");
+        }
+    }
+
+    #[test]
+    fn only_an_option_change_re_arms() {
+        let s = switches(true, true, true);
+        s.usable.store(false, Ordering::Relaxed);
+        assert!(!s.wants_surface());
+        // what `update_use_texture_render` does
+        s.usable.store(true, Ordering::Relaxed);
+        assert!(s.wants_surface());
+    }
+
+    #[test]
+    fn no_surface_before_a_texture_is_registered() {
+        let s = switches(true, true, false);
+        assert!(!s.wants_surface());
+        s.consumer_ready.store(true, Ordering::Relaxed);
+        assert!(s.wants_surface());
+    }
 }
 
 pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
