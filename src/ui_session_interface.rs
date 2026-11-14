@@ -29,6 +29,8 @@ use hbb_common::{
 use rdev::{Event, EventType::*, KeyCode};
 #[cfg(all(feature = "vram", feature = "flutter"))]
 use std::ffi::c_void;
+#[cfg(all(target_os = "macos", feature = "hwcodec"))]
+use std::ffi::c_void;
 use std::{
     collections::HashMap,
     ops::{Deref, DerefMut},
@@ -1758,6 +1760,16 @@ pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
     fn next_rgba(&self, display: usize);
     #[cfg(all(feature = "vram", feature = "flutter"))]
     fn on_texture(&self, display: usize, texture: *mut c_void);
+    /// macOS: a decoded surface instead of RGBA bytes, for the same display.
+    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+    fn on_pixelbuffer(
+        &self,
+        display: usize,
+        pixel_buffer: *mut c_void,
+        width: usize,
+        height: usize,
+        pixfmt: u32,
+    );
     fn set_multiple_windows_session(&self, sessions: Vec<WindowsSession>);
     fn set_current_display(&self, disp_idx: i32);
     #[cfg(feature = "flutter")]

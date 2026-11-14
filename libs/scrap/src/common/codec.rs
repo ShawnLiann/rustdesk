@@ -127,6 +127,18 @@ pub(crate) fn present_kind(has_surface: bool, software_frames: usize) -> Present
     }
 }
 
+/// What a decode call produced instead of bytes.
+///
+/// A plain value so it can travel through the video callback on every platform:
+/// outside macOS it stays zeroed, which is what "no surface" means.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SurfaceInfo {
+    /// CoreVideo pixel format; `0` when there is no surface.
+    pub pixfmt: u32,
+    pub width: usize,
+    pub height: usize,
+}
+
 /// The surface a decode call produced, owned by whoever presents that frame.
 ///
 /// Deliberately not a field of `Decoder` or `VideoHandler`: the renderer reads
@@ -148,6 +160,19 @@ impl GpuFrameOut {
 
     fn set(&mut self, frame: Option<PixelBufferFrame>) {
         self.frame = frame;
+    }
+
+    /// Size and pixel format of the surface this call produced, zeroed when
+    /// there is none. The renderer needs both to configure its texture.
+    pub fn surface_info(&self) -> SurfaceInfo {
+        match self.frame.as_ref() {
+            Some(frame) => SurfaceInfo {
+                pixfmt: frame.pixfmt(),
+                width: frame.width() as usize,
+                height: frame.height() as usize,
+            },
+            None => SurfaceInfo::default(),
+        }
     }
 }
 
