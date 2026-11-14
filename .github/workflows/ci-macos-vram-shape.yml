@@ -1,4 +1,4 @@
-name: CI macOS (surface decode)
+name: runner label probe (macos-26-intel)
 
 # Compile evidence for macOS-only code that upstream CI never builds: the
 # upstream job builds x86_64-unknown-linux-gnu with default features, where
@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - ci/impl-macos-vram-shape
+      - ci/port-check
 
 env:
   MAC_RUST_VERSION: "1.81"
@@ -26,9 +26,9 @@ jobs:
     uses: ./.github/workflows/bridge.yml
 
   build-macos-intel:
-    name: macOS x86_64 (hwcodec, surfaces)
+    name: macOS x86_64 on macos-26-intel
     needs: [generate-bridge]
-    runs-on: macos-15-intel
+    runs-on: macos-26-intel
     permissions:
       contents: read
     steps:
@@ -127,11 +127,23 @@ jobs:
       - name: Run the platform-independent decision tests
         run: cargo test -p scrap --features hwcodec present_tests
 
-      - name: Build rustdesk
-        run: |
-          MIN_MACOS_VERSION="12.3"
-          sed -i -e "s/MACOSX_DEPLOYMENT_TARGET\=[0-9]*.[0-9]*/MACOSX_DEPLOYMENT_TARGET=${MIN_MACOS_VERSION}/" build.py
-          sed -i -e "s/platform :osx, '.*'/platform :osx, '${MIN_MACOS_VERSION}'/" flutter/macos/Podfile
-          sed -i -e "s/osx_minimum_system_version = \"[0-9]*.[0-9]*\"/osx_minimum_system_version = \"${MIN_MACOS_VERSION}\"/" Cargo.toml
-          sed -i -e "s/MACOSX_DEPLOYMENT_TARGET = [0-9]*.[0-9]*;/MACOSX_DEPLOYMENT_TARGET = ${MIN_MACOS_VERSION};/" flutter/macos/Runner.xcodeproj/project.pbxproj
-          ./build.py --flutter --hwcodec --unix-file-copy-paste --screencapturekit
+      # 這三個才是要證明的：root crate 在 hwcodec on/off 兩種組態都編得過，
+      # 以及我們的決策測試在這個 runner 上跑得起來。
+      - name: Check the root crate with hwcodec on
+        run: cargo check --features hwcodec
+
+      - name: Check the root crate with hwcodec off
+        run: cargo check
+
+      - name: Run the surface decision tests
+        run: cargo test --features hwcodec --lib surface_switch_tests
+
+      # `src/lib.rs` gates `pub mod flutter` on feature = "flutter", so none of the
+      # steps above compile `src/flutter.rs` at all. This is the shipped macOS
+      # configuration.
+      #
+      # There is deliberately no `--features vram,...` step: `scrap`'s `vram`
+      # feature pulls `hwcodec/vram`, whose C++ is Windows-only (d3d11.h), so that
+      # combination is not buildable on macOS for reasons unrelated to this branch.
+      - name: Check the shipped macOS configuration
+        run: cargo check --features flutter,hwcodec
