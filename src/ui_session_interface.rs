@@ -27,9 +27,10 @@ use hbb_common::{
     whoami, SessionID, Stream,
 };
 use rdev::{Event, EventType::*, KeyCode};
-#[cfg(all(feature = "vram", feature = "flutter"))]
-use std::ffi::c_void;
-#[cfg(all(target_os = "macos", feature = "hwcodec"))]
+#[cfg(any(
+    all(feature = "vram", feature = "flutter"),
+    all(target_os = "macos", feature = "hwcodec")
+))]
 use std::ffi::c_void;
 use std::{
     collections::HashMap,
