@@ -540,12 +540,22 @@ impl VideoRenderer {
         // Property C2: a session may only ask for surfaces once some display has a
         // texture to draw them on. This is the only place that state changes, and
         // the write lock is already held.
-        self.has_texture.store(
-            sessions_lock
-                .values()
-                .any(|info| info.texture_rgba_ptr != usize::default()),
-            Ordering::Relaxed,
-        );
+        let any_texture = sessions_lock
+            .values()
+            .any(|info| info.texture_rgba_ptr != usize::default());
+        // Property C4: "nothing can draw a surface yet" is a failure the reader has
+        // to be able to see, and this is the only place it changes -- logging on
+        // the read side would repeat at frame rate.
+        let had_texture = self.has_texture.swap(any_texture, Ordering::Relaxed);
+        if had_texture != any_texture {
+            if any_texture {
+                log::info!("a display has a texture now; decoded surfaces can be drawn");
+            } else {
+                log::info!(
+                    "no display has a texture; decoded surfaces stay off, frames stay on bytes"
+                );
+            }
+        }
 }
 
     #[cfg(feature = "vram")]
