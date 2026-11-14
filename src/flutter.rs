@@ -668,11 +668,7 @@ impl VideoRenderer {
             // Same class as the missing entry above: a display that the peer
             // reports but the UI has not registered a texture for yet. Nothing to
             // draw on, and nothing to fall back to either, so do not latch.
-            hbb_common::throttled_log!(
-                LOG_INTERVAL,
-                warn,
-                "no texture for display {display}; surface dropped"
-            );
+            hbb_common::throttled_log!(LOG_INTERVAL, warn, "no texture for this surface; dropped");
             return false;
         }
         if info.size.0 != width || info.size.1 != height {
@@ -703,7 +699,11 @@ impl VideoRenderer {
             )
         };
         if accepted == 0 {
-            log::warn!("renderer refused the decoded surface for display {display}");
+            // Nothing left to fall back to for this frame: the software copy was
+            // skipped, and this refusal latches on purpose because bytes resume
+            // on the next frame. Drop the render-type memory so the next accepted
+            // frame notifies the UI again.
+            hbb_common::throttled_log!(LOG_INTERVAL, warn, "renderer refused the decoded surface");
             info.notify_render_type = None;
             self.note_refused();
             return false;
