@@ -1,0 +1,139 @@
+name: runner label probe (macos-26-intel)
+
+# Compile evidence for macOS-only code that upstream CI never builds: the
+# upstream job builds x86_64-unknown-linux-gnu with default features, where
+# everything behind `cfg(all(target_os = "macos", feature = "hwcodec"))` is
+# stripped out. A `///` comment on a function parameter shipped green once for
+# exactly that reason, so this branch builds the configuration the change is for.
+#
+# Scratch branch only: it pins hwcodec to the fork rev that carries the surface
+# API (Cargo.toml `[patch]`) and is never proposed as a PR.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ci/runner-label-probe
+
+env:
+  MAC_RUST_VERSION: "1.81"
+  FLUTTER_VERSION: "3.24.5"
+  VCPKG_COMMIT_ID: "9e593bb18ea69cc5095e012465dcd675a822ed0d"
+  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+
+jobs:
+  generate-bridge:
+    uses: ./.github/workflows/bridge.yml
+
+  build-macos-intel:
+    name: macOS x86_64 on macos-26-intel
+    needs: [generate-bridge]
+    runs-on: macos-26-intel
+    permissions:
+      contents: read
+    steps:
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          # vcpkg and cargo build scripts run in this job; do not leave the token in .git/config.
+          persist-credentials: false
+
+      - name: Install build runtime
+        run: |
+          brew install llvm
+          if ! command -v pkg-config &>/dev/null; then brew install pkg-config; fi
+
+      - name: Install NASM
+        run: |
+          wget https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/macosx/nasm-2.16.03-macosx.zip
+          unzip -q nasm-2.16.03-macosx.zip
+          sudo cp nasm-2.16.03/nasm /usr/local/bin/nasm
+          nasm --version
+
+      - name: Install flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - name: Patch flutter
+        run: |
+          cd $(dirname $(dirname $(which flutter)))
+          git apply ${{ github.workspace }}/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff
+
+      - name: Workaround for flutter issue
+        shell: bash
+        run: |
+          cd "$(dirname "$(which flutter)")"
+          sed -i -e 's/_setFramesEnabledState(false);/\/\/_setFramesEnabledState(false);/g' ../packages/flutter/lib/src/scheduler/binding.dart
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ env.MAC_RUST_VERSION }}
+          targets: x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: macos-intel-surface
+
+      - name: Restore bridge files
+        uses: actions/download-artifact@v4
+        with:
+          name: bridge-artifact
+          path: ./
+
+      - name: Setup vcpkg with GitHub Actions binary cache
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+          doNotCache: false
+
+      - name: Install vcpkg dependencies
+        run: |
+          if ! $VCPKG_ROOT/vcpkg install --x-install-root="$VCPKG_ROOT/installed"; then
+            find "${VCPKG_ROOT}/" -name "*.log" | while read -r f; do echo "$f:"; tail -n 50 "$f"; done
+            exit 1
+          fi
+
+      - name: Sync Cargo.lock for the pinned hwcodec
+        run: |
+          cargo update -p hwcodec
+          grep -A3 'name = "hwcodec"' Cargo.lock | head -8
+
+      # The point of this branch: compile the configuration that upstream CI
+      # strips, and fail early rather than after a full app build.
+      - name: Check the macOS surface path compiles
+        run: cargo check -p scrap --features hwcodec
+
+      # Two steps on purpose: `cargo check --tests` type-checks every test target
+      # without linking, and `--lib --no-run` links only the one we run. The
+      # crate's examples and integration tests reference a symbol this
+      # configuration cannot resolve (`_BackingScaleFactor`, from
+      # `quartz::display::Display::scale`) -- pre-existing and unrelated.
+      - name: Type-check every scrap test target
+        run: cargo check -p scrap --features hwcodec --tests
+      - name: Link the scrap test binary
+        run: cargo test -p scrap --features hwcodec --lib --no-run
+
+      - name: Run the platform-independent decision tests
+        run: cargo test -p scrap --features hwcodec present_tests
+
+      # 這三個才是要證明的：root crate 在 hwcodec on/off 兩種組態都編得過，
+      # 以及我們的決策測試在這個 runner 上跑得起來。
+      - name: Check the root crate with hwcodec on
+        run: cargo check --features hwcodec
+
+      - name: Check the root crate with hwcodec off
+        run: cargo check
+
+      - name: Run the surface decision tests
+        run: cargo test --features hwcodec --lib surface_switch_tests
