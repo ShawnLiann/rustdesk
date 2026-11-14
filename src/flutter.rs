@@ -530,7 +530,7 @@ impl VideoRenderer {
                 }
             }
         }
-    
+
         // Property C2: a session may only ask for surfaces once some display has a
         // texture to draw them on. This is the only place that state changes, and
         // the write lock is already held.
@@ -540,7 +540,7 @@ impl VideoRenderer {
                 .any(|info| info.texture_rgba_ptr != usize::default()),
             Ordering::Relaxed,
         );
-}
+    }
 
     #[cfg(feature = "vram")]
     pub fn register_gpu_output(&self, display: usize, ptr: usize) {
@@ -652,6 +652,10 @@ impl VideoRenderer {
             write_lock.get_mut(&display)
         };
         let Some(info) = opt_info else {
+            // Nothing is registered for this display, so the surface has nowhere
+            // to go: stop asking instead of dropping every frame silently.
+            log::warn!("no display session for display {display}; decoded surfaces off");
+            self.note_refused();
             return false;
         };
         if info.texture_rgba_ptr == usize::default() {
