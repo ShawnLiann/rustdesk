@@ -1775,6 +1775,29 @@ mod surface_switch_tests {
         assert!(s.wants_surface());
     }
 
+    /// The switch can be flipped by the UI between two frames. This pins the part
+    /// the gate itself owns: the next read sees the new value, and the user's own
+    /// change is not recorded as a refusal.
+    ///
+    /// It does not pin the "at most one frame is lost" bound -- that comes from the
+    /// call order in `client.rs` (gate read, decode, present, once per frame), not
+    /// from this function. Keep the two claims apart when citing this test.
+    #[test]
+    fn a_flip_is_seen_by_the_next_gate_read() {
+        let s = switches(true, true, true);
+        assert!(s.wants_surface(), "frame N goes to the decoder asking for a surface");
+        // the page stops drawing through a texture before that frame is presented
+        s.draw_through_texture.store(false, Ordering::Relaxed);
+        assert!(
+            !s.wants_surface(),
+            "frame N+1 must ask for bytes, not a second surface"
+        );
+        assert!(
+            s.usable.load(Ordering::Relaxed),
+            "the user's own change is not a refusal, so it must not latch the session"
+        );
+    }
+
     #[test]
     fn no_surface_before_a_texture_is_registered() {
         let s = switches(true, true, false);
