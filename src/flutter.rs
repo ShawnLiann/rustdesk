@@ -652,10 +652,16 @@ impl VideoRenderer {
             write_lock.get_mut(&display)
         };
         let Some(info) = opt_info else {
-            // Nothing is registered for this display, so the surface has nowhere
-            // to go: stop asking instead of dropping every frame silently.
-            log::warn!("no display session for display {display}; decoded surfaces off");
-            self.note_refused();
+            // No entry for this display. The RGBA path drops the same frame in
+            // this state, so there is nothing to fall back to; do not latch, as
+            // the entry is also missing transiently while a display switches
+            // texture and a session-wide latch would outlive that.
+            const LOG_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+            hbb_common::throttled_log!(
+                LOG_INTERVAL,
+                warn,
+                "no display session for display {display}; surface dropped"
+            );
             return false;
         };
         if info.texture_rgba_ptr == usize::default() {
@@ -668,7 +674,10 @@ impl VideoRenderer {
             // skipped the software copy, so refusing would only leave the last
             // picture on screen. The plugin sizes its texture from the
             // dimensions it is handed, so the frame's own size wins.
-            log::warn!(
+            const LOG_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+            hbb_common::throttled_log!(
+                LOG_INTERVAL,
+                warn,
                 "surface size ({width},{height}) differs from peer size ({},{})",
                 info.size.0,
                 info.size.1
