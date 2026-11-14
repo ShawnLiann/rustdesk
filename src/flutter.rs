@@ -367,6 +367,14 @@ struct VideoRenderer {
         allow(dead_code)
     )]
     surfaces_usable: Arc<AtomicBool>,
+    /// Whether some display has a texture registered right now. Derived from
+    /// `map_display_sessions` in `register_pixelbuffer_texture`, never a second
+    /// copy of the state, and refreshed only when a registration changes.
+    #[cfg_attr(
+        not(all(target_os = "macos", feature = "hwcodec")),
+        allow(dead_code)
+    )]
+    has_texture: Arc<AtomicBool>,
 }
 
 impl Default for VideoRenderer {
@@ -446,6 +454,7 @@ impl Default for VideoRenderer {
             #[cfg(all(target_os = "macos", feature = "hwcodec"))]
             on_pixelbuffer_func,
             surfaces_usable: Arc::new(AtomicBool::new(true)),
+            has_texture: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -469,6 +478,15 @@ impl VideoRenderer {
                 },
             );
         }
+    }
+
+    /// Record that a frame could not be presented.
+    ///
+    /// The decoder already skipped the software copy for that frame, so the only
+    /// recovery is to stop asking: the next frame takes the byte path.
+    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+    fn note_refused(&self) {
+        self.surfaces_usable.store(false, Ordering::Relaxed);
     }
 
     fn register_pixelbuffer_texture(&self, display: usize, ptr: usize) {
@@ -512,7 +530,17 @@ impl VideoRenderer {
                 }
             }
         }
-    }
+    
+        // Property C2: a session may only ask for surfaces once some display has a
+        // texture to draw them on. This is the only place that state changes, and
+        // the write lock is already held.
+        self.has_texture.store(
+            sessions_lock
+                .values()
+                .any(|info| info.texture_rgba_ptr != usize::default()),
+            Ordering::Relaxed,
+        );
+}
 
     #[cfg(feature = "vram")]
     pub fn register_gpu_output(&self, display: usize, ptr: usize) {
@@ -628,7 +656,7 @@ impl VideoRenderer {
         };
         if info.texture_rgba_ptr == usize::default() {
             log::warn!("no texture for display {display}; decoded surfaces off");
-            self.surfaces_usable.store(false, Ordering::Relaxed);
+            self.note_refused();
             return false;
         }
         if info.size.0 != width || info.size.1 != height {
@@ -642,7 +670,8 @@ impl VideoRenderer {
             );
         }
         let Some(func) = &self.on_pixelbuffer_func else {
-            self.surfaces_usable.store(false, Ordering::Relaxed);
+            log::warn!("no surface entry point; decoded surfaces off");
+            self.note_refused();
             return false;
         };
         let accepted = unsafe {
@@ -657,7 +686,7 @@ impl VideoRenderer {
         if accepted == 0 {
             log::warn!("renderer refused the decoded surface for display {display}");
             info.notify_render_type = None;
-            self.surfaces_usable.store(false, Ordering::Relaxed);
+            self.note_refused();
             return false;
         }
         if info.notify_render_type != Some(RenderType::PixelBuffer) {
@@ -809,7 +838,9 @@ impl FlutterHandler {
     pub fn update_use_texture_render(&self) {
         self.use_texture_render
             .store(crate::ui_interface::use_texture_render(), Ordering::Relaxed);
-        self.renderer.surfaces_usable.store(true, Ordering::Relaxed);
+        for handler in self.session_handlers.read().unwrap().values() {
+            handler.renderer.surfaces_usable.store(true, Ordering::Relaxed);
+        }
         self.display_rgbas.write().unwrap().clear();
     }
 }
@@ -1030,10 +1061,21 @@ impl InvokeUiSession for FlutterHandler {
         #[cfg(all(target_os = "macos", feature = "hwcodec"))]
         {
             if surfaces_available() {
-                return Some(SurfaceSwitches {
-                    draw_through_texture: self.use_texture_render.clone(),
-                    usable: self.renderer.surfaces_usable.clone(),
-                });
+                let renderer = self
+                    .session_handlers
+                    .read()
+                    .unwrap()
+                    .values()
+                    .next()
+                    .map(|handler| handler.renderer.clone());
+                if let Some(renderer) = renderer {
+                    return Some(SurfaceSwitches {
+                        draw_through_texture: self.use_texture_render.clone(),
+                        usable: renderer.surfaces_usable.clone(),
+                        consumer_ready: renderer.has_texture.clone(),
+                    });
+                }
+                log::info!("no ui session yet; decoded surfaces off for this session");
             }
         }
         None
