@@ -300,9 +300,6 @@ impl InvokeUiSession for SciterHandler {
             .map(|v| v.render_frame(&rgba.raw).ok());
     }
 
-    // The sciter UI has no texture path at all: it draws the RGBA buffer above.
-    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
-
     fn set_peer_info(&self, pi: &PeerInfo) {
         let mut pi_sciter = Value::map();
         pi_sciter.set_item("username", pi.username.clone());
