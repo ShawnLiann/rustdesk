@@ -1703,6 +1703,17 @@ impl<T: InvokeUiSession> Session<T> {
     }
 }
 
+/// The two UI-side switches that decide whether a session asks for surfaces.
+#[derive(Clone)]
+pub struct SurfaceSwitches {
+    /// The UI's live "draw through a texture" switch.
+    pub draw_through_texture: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Cleared when a frame could not be presented, so the session falls back to
+    /// bytes instead of showing the same stale picture forever. Set again when
+    /// the user changes the option.
+    pub usable: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
 pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
     fn set_cursor_data(&self, cd: CursorData);
     fn set_cursor_id(&self, id: String);
@@ -1760,6 +1771,15 @@ pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
     fn next_rgba(&self, display: usize);
     #[cfg(all(feature = "vram", feature = "flutter"))]
     fn on_texture(&self, display: usize, texture: *mut c_void);
+    /// The switches a session needs before it may ask for decoded surfaces.
+    ///
+    /// Both are the UI's own flags, handed over rather than copied, so the video
+    /// thread follows an option change or a failed presentation without keeping a
+    /// second version of either.
+    fn surface_switches(&self) -> Option<SurfaceSwitches> {
+        None
+    }
+
     /// macOS: a decoded surface instead of RGBA bytes, for the same display.
     #[cfg(all(target_os = "macos", feature = "hwcodec"))]
     fn on_pixelbuffer(
