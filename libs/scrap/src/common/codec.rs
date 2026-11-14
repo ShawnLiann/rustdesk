@@ -116,6 +116,16 @@ pub(crate) enum Present {
     Nothing,
 }
 
+/// Whether a session should ask the decoder for surfaces.
+///
+/// Pure on purpose, so the rule is testable on every platform. Both inputs come
+/// from the UI side: is it drawing through a texture, and has nothing gone wrong
+/// on that path since it last started drawing. Whether the decoder itself can
+/// produce a surface is checked where the decoder lives, not here.
+pub fn should_request_surface(draw_through_texture: bool, surfaces_usable: bool) -> bool {
+    draw_through_texture && surfaces_usable
+}
+
 /// Decide what to present from what a decode call actually produced.
 pub(crate) fn present_kind(has_surface: bool, software_frames: usize) -> Present {
     if has_surface {
@@ -1320,7 +1330,7 @@ pub fn test_av1() {
 
 #[cfg(test)]
 mod present_tests {
-    use super::{present_kind, Present};
+    use super::{present_kind, should_request_surface, Present};
 
     #[test]
     fn a_surface_wins_over_software_frames() {
@@ -1336,5 +1346,25 @@ mod present_tests {
     #[test]
     fn nothing_to_present_when_the_call_produced_nothing() {
         assert_eq!(present_kind(false, 0), Present::Nothing);
+    }
+
+    #[test]
+    fn surfaces_need_the_ui_to_draw_textures() {
+        assert!(!should_request_surface(false, true));
+    }
+
+    #[test]
+    fn surfaces_need_the_path_to_be_usable() {
+        assert!(!should_request_surface(true, false));
+    }
+
+    #[test]
+    fn surfaces_never_when_neither_holds() {
+        assert!(!should_request_surface(false, false));
+    }
+
+    #[test]
+    fn surfaces_when_both_hold() {
+        assert!(should_request_surface(true, true));
     }
 }
