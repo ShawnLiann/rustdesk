@@ -129,6 +129,21 @@ pub fn would_block_if_equal(old: &mut Vec<u8>, b: &[u8]) -> std::io::Result<()> 
     Ok(())
 }
 
+/// Does the new capture differ from the previous one, over the whole allocation?
+///
+/// Each side is the surface's bytes over its whole allocation, or `None` when there is nothing to
+/// map. Kept as a pure function because the surfaces it compares are macOS-only and the verdict is
+/// the part worth testing everywhere: `None` (the first frame, or a surface that cannot be mapped)
+/// and a changed length (the display was resized) both count as a difference. Sending a frame
+/// twice costs one frame; dropping a changed one costs the picture.
+#[cfg(any(target_os = "macos", test))]
+pub(crate) fn surfaces_differ(prev: Option<&[u8]>, next: Option<&[u8]>) -> bool {
+    match (prev, next) {
+        (Some(prev), Some(next)) => prev != next,
+        _ => true,
+    }
+}
+
 pub trait TraitCapturer {
     // We doesn't support
     #[cfg(not(any(target_os = "ios")))]
@@ -549,4 +564,43 @@ pub fn screen_size() -> (u16, u16, u16) {
 #[cfg(target_os = "android")]
 pub fn is_start() -> Option<bool> {
     android::is_start()
+}
+
+/// What the quartz capturer does with a captured surface before handing it on: drop the frame when
+/// it is byte-identical to the previous one, send it otherwise. The surface compare itself is
+/// macOS-only, but the verdict is plain data, so it is tested on every platform - the cases that
+/// must never regress are the ones that would freeze the peer (a changed frame wrongly dropped) and
+/// the ones that would send a stale picture (the same frame sent again).
+#[cfg(test)]
+mod still_frame_tests {
+    use super::surfaces_differ;
+
+    #[test]
+    fn identical_bytes_are_dropped() {
+        let prev = [7u8, 8, 9, 10];
+        let next = [7u8, 8, 9, 10];
+        assert!(!surfaces_differ(Some(&prev), Some(&next)));
+    }
+
+    #[test]
+    fn one_changed_byte_is_sent() {
+        let prev = [7u8, 8, 9, 10];
+        let next = [7u8, 8, 9, 11];
+        assert!(surfaces_differ(Some(&prev), Some(&next)));
+    }
+
+    #[test]
+    fn a_resized_frame_is_sent() {
+        let prev = [7u8, 8, 9, 10];
+        let next = [7u8, 8, 9, 10, 11];
+        assert!(surfaces_differ(Some(&prev), Some(&next)));
+    }
+
+    #[test]
+    fn a_missing_buffer_is_sent() {
+        let bytes = [7u8, 8, 9, 10];
+        assert!(surfaces_differ(None, Some(&bytes)));
+        assert!(surfaces_differ(Some(&bytes), None));
+        assert!(surfaces_differ(None, None));
+    }
 }
