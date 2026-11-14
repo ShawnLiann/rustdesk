@@ -2900,6 +2900,7 @@ impl<T: InvokeUiSession> Remote<T> {
             fps_control: Default::default(),
             discard_queue: discard_queue.clone(),
         };
+        let gpu_frames = self.handler.ui_handler.surface_switches();
         let handler = self.handler.ui_handler.clone();
         crate::client::start_video_thread(
             self.handler.clone(),
@@ -2909,6 +2910,7 @@ impl<T: InvokeUiSession> Remote<T> {
             decode_fps,
             self.chroma.clone(),
             discard_queue,
+            gpu_frames,
             move |display: usize,
                   data: &mut scrap::ImageRgb,
                   _texture: *mut c_void,

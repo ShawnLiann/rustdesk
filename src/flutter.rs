@@ -1,7 +1,7 @@
 use crate::{
     client::*,
     flutter_ffi::{EventToUI, SessionID},
-    ui_session_interface::{io_loop, InvokeUiSession, Session},
+    ui_session_interface::{io_loop, InvokeUiSession, Session, SurfaceSwitches},
 };
 use flutter_rust_bridge::StreamSink;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -315,6 +315,40 @@ struct DisplaySessionInfo {
     notify_render_type: Option<RenderType>,
 }
 
+/// Whether the loaded plugin can take a decoded surface at all.
+///
+/// A property of the plugin, not of the session: the version pinned in
+/// `flutter/pubspec.yaml` has no surface entry point, and asking for surfaces
+/// then would skip the software copy for frames nobody can draw. Resolved once
+/// and reported once, so an old plugin cannot freeze the picture.
+#[cfg(all(target_os = "macos", feature = "hwcodec"))]
+fn surfaces_available() -> bool {
+    static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *AVAILABLE.get_or_init(|| match &*TEXTURE_RGBA_RENDERER_PLUGIN {
+        Ok(lib) => {
+            let found = unsafe {
+                lib.symbol::<FlutterRgbaRendererPluginOnPixelBuffer>(
+                    "FlutterRgbaRendererPluginOnPixelBuffer",
+                )
+            };
+            match found {
+                Ok(_) => true,
+                Err(e) => {
+                    log::warn!(
+                        "texture rgba renderer has no surface entry point ({e}); \
+                         decoded surfaces stay off"
+                    );
+                    false
+                }
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to load texture rgba renderer plugin, {e}");
+            false
+        }
+    })
+}
+
 // Video Texture Renderer in Flutter
 #[derive(Clone)]
 struct VideoRenderer {
@@ -326,6 +360,13 @@ struct VideoRenderer {
     on_texture_func: Option<Symbol<'static, FlutterGpuTextureRendererPluginCApiSetTexture>>,
     #[cfg(all(target_os = "macos", feature = "hwcodec"))]
     on_pixelbuffer_func: Option<Symbol<'static, FlutterRgbaRendererPluginOnPixelBuffer>>,
+    /// False once a surface could not be presented, so the session stops asking
+    /// for them. Shared with the session through `Clone`, hence the `Arc`.
+    #[cfg_attr(
+        not(all(target_os = "macos", feature = "hwcodec")),
+        allow(dead_code)
+    )]
+    surfaces_usable: Arc<AtomicBool>,
 }
 
 impl Default for VideoRenderer {
@@ -404,6 +445,7 @@ impl Default for VideoRenderer {
             on_texture_func,
             #[cfg(all(target_os = "macos", feature = "hwcodec"))]
             on_pixelbuffer_func,
+            surfaces_usable: Arc::new(AtomicBool::new(true)),
         }
     }
 }
@@ -585,6 +627,8 @@ impl VideoRenderer {
             return false;
         };
         if info.texture_rgba_ptr == usize::default() {
+            log::warn!("no texture for display {display}; decoded surfaces off");
+            self.surfaces_usable.store(false, Ordering::Relaxed);
             return false;
         }
         if info.size.0 != width || info.size.1 != height {
@@ -598,6 +642,7 @@ impl VideoRenderer {
             );
         }
         let Some(func) = &self.on_pixelbuffer_func else {
+            self.surfaces_usable.store(false, Ordering::Relaxed);
             return false;
         };
         let accepted = unsafe {
@@ -612,6 +657,7 @@ impl VideoRenderer {
         if accepted == 0 {
             log::warn!("renderer refused the decoded surface for display {display}");
             info.notify_render_type = None;
+            self.surfaces_usable.store(false, Ordering::Relaxed);
             return false;
         }
         if info.notify_render_type != Some(RenderType::PixelBuffer) {
@@ -763,6 +809,7 @@ impl FlutterHandler {
     pub fn update_use_texture_render(&self) {
         self.use_texture_render
             .store(crate::ui_interface::use_texture_render(), Ordering::Relaxed);
+        self.renderer.surfaces_usable.store(true, Ordering::Relaxed);
         self.display_rgbas.write().unwrap().clear();
     }
 }
@@ -977,6 +1024,19 @@ impl InvokeUiSession for FlutterHandler {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     fn on_rgba(&self, display: usize, rgba: &mut scrap::ImageRgb) {
         self.on_rgba_soft_render(display, rgba);
+    }
+
+    fn surface_switches(&self) -> Option<SurfaceSwitches> {
+        #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+        {
+            if surfaces_available() {
+                return Some(SurfaceSwitches {
+                    draw_through_texture: self.use_texture_render.clone(),
+                    usable: self.renderer.surfaces_usable.clone(),
+                });
+            }
+        }
+        None
     }
 
     #[inline]
