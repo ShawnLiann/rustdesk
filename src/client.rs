@@ -78,7 +78,7 @@ use base::{
 };
 pub use helper::*;
 #[cfg(all(target_os = "macos", feature = "hwcodec"))]
-use scrap::GpuFrameOut;
+use scrap::codec::GpuFrameOut;
 use scrap::{
     codec::Decoder,
     record::{Recorder, RecorderContext},
@@ -4031,7 +4031,7 @@ pub fn start_video_thread<F, T>(
     discard_queue: Arc<RwLock<bool>>,
     video_callback: F,
 ) where
-    F: 'static + FnMut(usize, &mut scrap::ImageRgb, *mut c_void, bool) + Send,
+    F: 'static + FnMut(usize, &mut scrap::ImageRgb, *mut c_void, bool, scrap::codec::SurfaceInfo) + Send,
     T: InvokeUiSession,
 {
     let mut video_callback = video_callback;
@@ -4100,11 +4100,20 @@ pub fn start_video_thread<F, T>(
                                 &mut gpu,
                             ) {
                                 Ok(true) => {
+                                    // Size and pixel format travel with the frame:
+                                    // the renderer configures its texture from them,
+                                    // and a zeroed value means "no surface, RGBA
+                                    // bytes instead".
+                                    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+                                    let surface_info = gpu.surface_info();
+                                    #[cfg(not(all(target_os = "macos", feature = "hwcodec")))]
+                                    let surface_info = scrap::codec::SurfaceInfo::default();
                                     video_callback(
                                         display,
                                         &mut handler.rgb,
                                         handler.texture.texture,
                                         pixelbuffer,
+                                        surface_info,
                                     );
 
                                     // chroma
