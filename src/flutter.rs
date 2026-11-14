@@ -9,6 +9,9 @@ use hbb_common::dlopen::{
     symbor::{Library, Symbol},
     Error as LibError,
 };
+/// How often the surface size-mismatch line may repeat.
+const SURFACE_SIZE_LOG_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
+
 use hbb_common::{
     anyhow::anyhow, bail, config::LocalConfig, get_version_number, log,
     rendezvous_proto::ConnType, ResultType,
@@ -600,19 +603,20 @@ impl VideoRenderer {
             return false;
         }
 
-        if info.size.0 != rgba.w || info.size.1 != rgba.h {
+        // Peer info's handling is async and may be late than video frame's handling.
+        // An unset size therefore says nothing about the frame: it is not a mismatch,
+        // and logging it on every frame buries the mismatches that do matter. The
+        // acceptance rule is unchanged -- a known size that disagrees with the frame
+        // is still refused, an unknown size still lets the frame through.
+        if info.size != (0, 0) && info.size != (rgba.w, rgba.h) {
             log::error!(
-                "width/height mismatch: ({},{}) != ({},{})",
+                "width/height mismatch: info ({},{}) != frame ({},{})",
                 info.size.0,
                 info.size.1,
                 rgba.w,
                 rgba.h
             );
-            // Peer info's handling is async and may be late than video frame's handling
-            // Allow peer info not set, but not allow wrong width/height for correct local cursor position
-            if info.size != (0, 0) {
-                return false;
-            }
+            return false;
         }
         if let Some(func) = &self.on_rgba_func {
             unsafe {
@@ -664,13 +668,21 @@ impl VideoRenderer {
             self.note_refused();
             return false;
         }
-        if info.size.0 != width || info.size.1 != height {
-            // Unlike the RGBA path this must not refuse: the decoder already
-            // skipped the software copy for this frame, so refusing leaves the
-            // last picture on screen. The plugin sizes its texture from the
-            // dimensions it is handed, so the frame's own size wins.
-            log::warn!(
-                "surface size ({width},{height}) differs from peer size ({},{})",
+        // An unset peer size says nothing about the frame: it only means the peer
+        // info has not arrived yet. Only a known size that disagrees is worth a
+        // line. Unlike the RGBA path this never refuses -- the decoder already
+        // skipped the software copy, and the plugin sizes its texture from the
+        // dimensions it is handed, so the frame's own size wins.
+        if info.size != (0, 0) && (info.size.0 != width || info.size.1 != height) {
+            // Frame driven, so it goes through the throttled macro: this arm never
+            // refuses, so an unthrottled line here would repeat for as long as the
+            // sizes disagree and bury the refusals that matter.
+            hbb_common::throttled_log!(
+                SURFACE_SIZE_LOG_INTERVAL,
+                warn,
+                "surface size ({},{}) differs from peer size ({},{})",
+                width,
+                height,
                 info.size.0,
                 info.size.1
             );
