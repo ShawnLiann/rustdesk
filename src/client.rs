@@ -77,6 +77,8 @@ use base::{
     message_proto::{option_message::BoolOption, *},
 };
 pub use helper::*;
+#[cfg(all(target_os = "macos", feature = "hwcodec"))]
+use scrap::GpuFrameOut;
 use scrap::{
     codec::Decoder,
     record::{Recorder, RecorderContext},
@@ -2649,6 +2651,13 @@ pub struct VideoHandler {
     _display: usize, // useful for debug
     fail_counter: usize,
     first_frame: bool,
+    /// Whether this session asked for decoded surfaces.
+    ///
+    /// Kept here and not on the decoder: the decoder is replaced on every
+    /// format change and on the failure-recovery reset, which would silently
+    /// turn the path off mid-session and never turn it back on.
+    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+    gpu_frames_wanted: bool,
 }
 
 impl VideoHandler {
@@ -2681,6 +2690,8 @@ impl VideoHandler {
             _display,
             fail_counter: 0,
             first_frame: true,
+            #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+            gpu_frames_wanted: false,
         }
     }
 
@@ -2691,6 +2702,7 @@ impl VideoHandler {
         vf: VideoFrame,
         pixelbuffer: &mut bool,
         chroma: &mut Option<Chroma>,
+        #[cfg(all(target_os = "macos", feature = "hwcodec"))] gpu: &mut GpuFrameOut,
     ) -> ResultType<bool> {
         let format = CodecFormat::from(&vf);
         if format != self.decoder.format() {
@@ -2698,12 +2710,20 @@ impl VideoHandler {
         }
         match &vf.union {
             Some(frame) => {
+                #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+                let gpu = if self.gpu_frames_wanted {
+                    Some(&mut *gpu)
+                } else {
+                    None
+                };
                 let res = self.decoder.handle_video_frame(
                     frame,
                     &mut self.rgb,
                     &mut self.texture,
                     pixelbuffer,
                     chroma,
+                    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+                    gpu,
                 );
                 if res.as_ref().is_ok_and(|x| *x) {
                     self.fail_counter = 0;
@@ -2736,6 +2756,17 @@ impl VideoHandler {
             }
             _ => Ok(false),
         }
+    }
+
+    /// Ask this session for decoded surfaces when the platform can present them.
+    ///
+    /// `pub(crate)` until the client option that calls it lands: turning this on
+    /// today makes the video invisible rather than faster, because the renderer
+    /// call is the next slice and macOS cannot take the Windows `vram` branch.
+    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+    pub(crate) fn set_gpu_frames_wanted(&mut self, on: bool) {
+        self.gpu_frames_wanted = on;
+        log::info!("decoded surfaces wanted: {on}");
     }
 
     /// Reset the decoder, change format if it is Some
@@ -4055,8 +4086,19 @@ pub fn start_video_thread<F, T>(
                         if let Some(handler) = video_handler.as_mut() {
                             let mut pixelbuffer = true;
                             let mut tmp_chroma = None;
+                            // Owned for this frame only: the surface stays alive
+                            // until after `video_callback` has handed the
+                            // pointer to the renderer, then it is released.
+                            #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+                            let mut gpu = GpuFrameOut::default();
                             let format_changed = handler.decoder.format() != format;
-                            match handler.handle_frame(vf, &mut pixelbuffer, &mut tmp_chroma) {
+                            match handler.handle_frame(
+                                vf,
+                                &mut pixelbuffer,
+                                &mut tmp_chroma,
+                                #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+                                &mut gpu,
+                            ) {
                                 Ok(true) => {
                                     video_callback(
                                         display,
