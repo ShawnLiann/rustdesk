@@ -1781,15 +1781,21 @@ pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
     }
 
     /// macOS: a decoded surface instead of RGBA bytes, for the same display.
+    ///
+    /// Default is to do nothing: a backend that cannot present a surface never
+    /// receives one, because `surface_switches()` returns `None` for it and the
+    /// decoder then keeps producing bytes. That keeps every other backend free of
+    /// a stub.
     #[cfg(all(target_os = "macos", feature = "hwcodec"))]
     fn on_pixelbuffer(
         &self,
-        display: usize,
-        pixel_buffer: *mut c_void,
-        width: usize,
-        height: usize,
-        pixfmt: u32,
-    );
+        _display: usize,
+        _pixel_buffer: *mut c_void,
+        _width: usize,
+        _height: usize,
+        _pixfmt: u32,
+    ) {
+    }
     fn set_multiple_windows_session(&self, sessions: Vec<WindowsSession>);
     fn set_current_display(&self, disp_idx: i32);
     #[cfg(feature = "flutter")]
