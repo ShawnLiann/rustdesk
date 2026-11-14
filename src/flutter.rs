@@ -298,6 +298,14 @@ pub type FlutterGpuTextureRendererPluginCApiGetAdapterLuid = unsafe extern "C" f
 
 pub(super) type TextureRgbaPtr = usize;
 
+/// macOS zero-copy entry point of the same texture renderer plugin.
+///
+/// `(texture_rgba_ptr, pixel_buffer, width, height, pixfmt) -> accepted`, where
+/// `accepted == 0` means the plugin refused this frame.
+#[cfg(all(target_os = "macos", feature = "hwcodec"))]
+pub type FlutterRgbaRendererPluginOnPixelBuffer =
+    unsafe extern "C" fn(TextureRgbaPtr, *mut c_void, i32, i32, u32) -> i32;
+
 struct DisplaySessionInfo {
     // TextureRgba pointer in flutter native.
     texture_rgba_ptr: TextureRgbaPtr,
@@ -316,6 +324,8 @@ struct VideoRenderer {
     on_rgba_func: Option<Symbol<'static, FlutterRgbaRendererPluginOnRgba>>,
     #[cfg(feature = "vram")]
     on_texture_func: Option<Symbol<'static, FlutterGpuTextureRendererPluginCApiSetTexture>>,
+    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+    on_pixelbuffer_func: Option<Symbol<'static, FlutterRgbaRendererPluginOnPixelBuffer>>,
 }
 
 impl Default for VideoRenderer {
@@ -361,6 +371,30 @@ impl Default for VideoRenderer {
             }
         };
 
+        #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+        let on_pixelbuffer_func = match &*TEXTURE_RGBA_RENDERER_PLUGIN {
+            Ok(lib) => {
+                let find_sym_res = unsafe {
+                    lib.symbol::<FlutterRgbaRendererPluginOnPixelBuffer>(
+                        "FlutterRgbaRendererPluginOnPixelBuffer",
+                    )
+                };
+                match find_sym_res {
+                    Ok(sym) => Some(sym),
+                    Err(e) => {
+                        log::info!(
+                            "texture rgba renderer has no surface entry point, {e}"
+                        );
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to load texture rgba renderer plugin, {e}");
+                None
+            }
+        };
+
         Self {
             map_display_sessions: Default::default(),
             is_support_multi_ui_session: false,
@@ -368,6 +402,8 @@ impl Default for VideoRenderer {
             on_rgba_func,
             #[cfg(feature = "vram")]
             on_texture_func,
+            #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+            on_pixelbuffer_func,
         }
     }
 }
@@ -516,6 +552,68 @@ impl VideoRenderer {
                     rgba.align() as _,
                 )
             };
+        }
+        if info.notify_render_type != Some(RenderType::PixelBuffer) {
+            info.notify_render_type = Some(RenderType::PixelBuffer);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// macOS: hand the decoded surface to the texture this display already uses.
+    ///
+    /// Same `texture_rgba_ptr`, same plugin, same widget as the RGBA path --
+    /// only the entry point differs, so nothing new is registered and the
+    /// Windows `vram` rail is untouched.
+    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+    pub fn on_pixelbuffer(
+        &self,
+        display: usize,
+        pixel_buffer: *mut c_void,
+        width: usize,
+        height: usize,
+        pixfmt: u32,
+    ) -> bool {
+        let mut write_lock = self.map_display_sessions.write().unwrap();
+        let opt_info = if !self.is_support_multi_ui_session {
+            write_lock.values_mut().next()
+        } else {
+            write_lock.get_mut(&display)
+        };
+        let Some(info) = opt_info else {
+            return false;
+        };
+        if info.texture_rgba_ptr == usize::default() {
+            return false;
+        }
+        if info.size.0 != width || info.size.1 != height {
+            // Unlike the RGBA path this must not refuse: the decoder already
+            // skipped the software copy, so refusing would only leave the last
+            // picture on screen. The plugin sizes its texture from the
+            // dimensions it is handed, so the frame's own size wins.
+            log::warn!(
+                "surface size ({width},{height}) differs from peer size ({},{})",
+                info.size.0,
+                info.size.1
+            );
+        }
+        let Some(func) = &self.on_pixelbuffer_func else {
+            return false;
+        };
+        let accepted = unsafe {
+            func(
+                info.texture_rgba_ptr as _,
+                pixel_buffer,
+                width as _,
+                height as _,
+                pixfmt,
+            )
+        };
+        if accepted == 0 {
+            log::warn!("renderer refused the decoded surface for display {display}");
+            info.notify_render_type = None;
+            return false;
         }
         if info.notify_render_type != Some(RenderType::PixelBuffer) {
             info.notify_render_type = Some(RenderType::PixelBuffer);
@@ -880,6 +978,31 @@ impl InvokeUiSession for FlutterHandler {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     fn on_rgba(&self, display: usize, rgba: &mut scrap::ImageRgb) {
         self.on_rgba_soft_render(display, rgba);
+    }
+
+    #[inline]
+    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+    fn on_pixelbuffer(
+        &self,
+        display: usize,
+        pixel_buffer: *mut c_void,
+        width: usize,
+        height: usize,
+        pixfmt: u32,
+    ) {
+        if !self.use_texture_render.load(Ordering::Relaxed) {
+            return;
+        }
+        for (_, session) in self.session_handlers.read().unwrap().iter() {
+            if session
+                .renderer
+                .on_pixelbuffer(display, pixel_buffer, width, height, pixfmt)
+            {
+                if let Some(stream) = &session.event_stream {
+                    stream.add(EventToUI::Texture(display, false));
+                }
+            }
+        }
     }
 
     #[inline]
