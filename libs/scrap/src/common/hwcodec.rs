@@ -375,6 +375,45 @@ impl HwRamDecoder {
     }
 }
 
+#[cfg(all(target_os = "macos", feature = "hwcodec"))]
+impl HwRamDecoder {
+    /// Decode one packet and also ask VideoToolbox for the decoded surface.
+    ///
+    /// A second entry point, not a flag on `decode`: every caller keeps its
+    /// signature, and `want_gpu` travels with the packet because the decoder
+    /// decides during the call whether it can skip the software transfer; what
+    /// it produced is read from the return value, never assumed.
+    pub fn decode_gpu<'a>(
+        &'a mut self,
+        data: &[u8],
+        want_gpu: bool,
+    ) -> ResultType<HwRamDecoded<'a>> {
+        let mut decoded = self
+            .decoder
+            .decode_gpu(data, want_gpu)
+            .map_err(|e| anyhow!(e))?;
+        let pixelbuffer = decoded.pixelbuffer.take();
+        let frames: &'a mut Vec<DecodeFrame> = decoded.frames;
+        Ok(HwRamDecoded {
+            images: frames
+                .iter()
+                .map(|f| HwRamDecoderImage { frame: f })
+                .collect(),
+            pixelbuffer,
+        })
+    }
+}
+
+/// What one [`HwRamDecoder::decode_gpu`] call produced, macOS only.
+///
+/// Both halves come from the same call: `pixelbuffer` is owned and safe to hand
+/// to the renderer, `images` borrow the decoder and die with it.
+#[cfg(all(target_os = "macos", feature = "hwcodec"))]
+pub struct HwRamDecoded<'a> {
+    pub images: Vec<HwRamDecoderImage<'a>>,
+    pub pixelbuffer: crate::PixelBufferOutput,
+}
+
 pub struct HwRamDecoderImage<'a> {
     frame: &'a DecodeFrame,
 }
