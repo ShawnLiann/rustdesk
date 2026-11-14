@@ -2912,13 +2912,24 @@ impl<T: InvokeUiSession> Remote<T> {
             move |display: usize,
                   data: &mut scrap::ImageRgb,
                   _texture: *mut c_void,
-                  pixelbuffer: bool| {
+                  pixelbuffer: bool,
+                  surface_info: scrap::codec::SurfaceInfo| {
                 *frame_count.write().unwrap() += 1;
                 if pixelbuffer {
                     handler.on_rgba(display, data);
                 } else {
                     #[cfg(all(feature = "vram", feature = "flutter"))]
                     handler.on_texture(display, _texture);
+                    // macOS hands over a decoded surface instead of bytes; it goes
+                    // through the same per-display texture as the RGBA path.
+                    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+                    handler.on_pixelbuffer(
+                        display,
+                        _texture,
+                        surface_info.width,
+                        surface_info.height,
+                        surface_info.pixfmt,
+                    );
                 }
             },
         );
