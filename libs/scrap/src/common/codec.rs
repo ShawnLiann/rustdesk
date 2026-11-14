@@ -11,6 +11,8 @@ use crate::hwcodec::*;
 use crate::mediacodec::{MediaCodecDecoder, H264_DECODER_SUPPORT, H265_DECODER_SUPPORT};
 #[cfg(feature = "vram")]
 use crate::vram::*;
+#[cfg(all(target_os = "macos", feature = "hwcodec"))]
+use crate::PixelBufferFrame;
 use crate::{
     aom::{self, AomDecoder, AomEncoder, AomEncoderConfig},
     common::GoogleImage,
@@ -97,6 +99,55 @@ impl Deref for Encoder {
 impl DerefMut for Encoder {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.codec
+    }
+}
+
+/// What a decode call should hand to the renderer.
+///
+/// A pure function of what the decoder returned, so the branch can be tested on
+/// every platform: no decoder, no surface, no feature gate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Present {
+    /// A decoded surface: draw it, the RGB bytes are stale.
+    Surface,
+    /// Software frames only: draw the converted bytes.
+    Software,
+    /// Nothing decodable came back.
+    Nothing,
+}
+
+/// Decide what to present from what a decode call actually produced.
+pub(crate) fn present_kind(has_surface: bool, software_frames: usize) -> Present {
+    if has_surface {
+        Present::Surface
+    } else if software_frames > 0 {
+        Present::Software
+    } else {
+        Present::Nothing
+    }
+}
+
+/// The surface a decode call produced, owned by whoever presents that frame.
+///
+/// Deliberately not a field of `Decoder` or `VideoHandler`: the renderer reads
+/// the pointer after the decode returns, so the only owning reference has to be
+/// released by the caller that handed the pointer over, once it is done with
+/// it. The video loop keeps one of these in the per-frame scope.
+#[cfg(all(target_os = "macos", feature = "hwcodec"))]
+#[derive(Default)]
+pub struct GpuFrameOut {
+    frame: Option<PixelBufferFrame>,
+}
+
+#[cfg(all(target_os = "macos", feature = "hwcodec"))]
+impl GpuFrameOut {
+    /// The surface produced by the call, if the decoder handed one back.
+    pub fn as_ref(&self) -> Option<&PixelBufferFrame> {
+        self.frame.as_ref()
+    }
+
+    fn set(&mut self, frame: Option<PixelBufferFrame>) {
+        self.frame = frame;
     }
 }
 
@@ -635,6 +686,9 @@ impl Decoder {
         _texture: &mut ImageTexture,
         _pixelbuffer: &mut bool,
         chroma: &mut Option<Chroma>,
+        // Where to put the surface when the caller can present one. `None`
+        // means this caller cannot, and the decode stays a copy.
+        #[cfg(all(target_os = "macos", feature = "hwcodec"))] mut gpu: Option<&mut GpuFrameOut>,
     ) -> ResultType<bool> {
         match frame {
             video_frame::Union::Vp8s(vp8s) => {
@@ -666,6 +720,21 @@ impl Decoder {
                     *_pixelbuffer = false;
                     return Decoder::handle_vram_video_frame(decoder, h264s, _texture);
                 }
+
+                #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+                if let Some(gpu) = gpu.as_deref_mut() {
+                    if let Some(decoder) = &mut self.h264_ram {
+                        return Decoder::handle_gpu_video_frame(
+                            decoder,
+                            h264s,
+                            rgb,
+                            &mut self.i420,
+                            _texture,
+                            gpu,
+                            _pixelbuffer,
+                        );
+                    }
+                }
                 #[cfg(feature = "hwcodec")]
                 if let Some(decoder) = &mut self.h264_ram {
                     return Decoder::handle_hwram_video_frame(decoder, h264s, rgb, &mut self.i420);
@@ -679,6 +748,21 @@ impl Decoder {
                 if let Some(decoder) = &mut self.h265_vram {
                     *_pixelbuffer = false;
                     return Decoder::handle_vram_video_frame(decoder, h265s, _texture);
+                }
+
+                #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+                if let Some(gpu) = gpu.as_deref_mut() {
+                    if let Some(decoder) = &mut self.h265_ram {
+                        return Decoder::handle_gpu_video_frame(
+                            decoder,
+                            h265s,
+                            rgb,
+                            &mut self.i420,
+                            _texture,
+                            gpu,
+                            _pixelbuffer,
+                        );
+                    }
                 }
                 #[cfg(feature = "hwcodec")]
                 if let Some(decoder) = &mut self.h265_ram {
@@ -800,6 +884,59 @@ impl Decoder {
             }
         }
         return Ok(ret);
+    }
+
+    /// macOS: decode, and when the decoder hands back a surface, give that to
+    /// the renderer instead of a copy through system memory.
+    ///
+    /// The branch is chosen from what the decoder returned, not from the flag
+    /// that asked for it: a session that asked for surfaces can still get
+    /// software frames (format refused, decoder restart) and those must be
+    /// displayed too.
+    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+    fn handle_gpu_video_frame(
+        decoder: &mut HwRamDecoder,
+        frames: &EncodedVideoFrames,
+        rgb: &mut ImageRgb,
+        i420: &mut Vec<u8>,
+        texture: &mut ImageTexture,
+        gpu: &mut GpuFrameOut,
+        pixelbuffer: &mut bool,
+    ) -> ResultType<bool> {
+        let mut ret = false;
+        for h26x in frames.frames.iter() {
+            let mut decoded = decoder.decode_gpu(&h26x.data, true)?;
+            let surface = decoded.pixelbuffer.take();
+            match present_kind(surface.is_some(), decoded.images.len()) {
+                Present::Surface => {
+                    if let Some(frame) = surface {
+                        let (w, h) = (frame.width() as usize, frame.height() as usize);
+                        let ptr = frame.as_ptr();
+                        // Hand the only owning reference to the caller: dropping
+                        // it here would free a surface the renderer has not read
+                        // yet, and never dropping it would leak a whole picture
+                        // per frame.
+                        gpu.set(Some(frame));
+                        // `ptr` stays valid only until the caller's `GpuFrameOut`
+                        // drops, which happens at the end of the video-loop
+                        // iteration; a consumer outliving that must retain.
+                        *texture = ImageTexture { texture: ptr, w, h };
+                        *pixelbuffer = false;
+                        ret = true;
+                    }
+                }
+                Present::Software => {
+                    for image in decoded.images.iter() {
+                        if image.to_fmt(rgb, i420).is_ok() {
+                            *pixelbuffer = true;
+                            ret = true;
+                        }
+                    }
+                }
+                Present::Nothing => {}
+            }
+        }
+        Ok(ret)
     }
 
     // rgb [in/out] fmt and stride must be set in ImageRgb
@@ -1154,4 +1291,25 @@ pub fn test_av1() {
             );
         });
     });
+}
+
+#[cfg(test)]
+mod present_tests {
+    use super::{present_kind, Present};
+
+    #[test]
+    fn a_surface_wins_over_software_frames() {
+        assert_eq!(present_kind(true, 0), Present::Surface);
+        assert_eq!(present_kind(true, 3), Present::Surface);
+    }
+
+    #[test]
+    fn a_refused_surface_still_presents_software_frames() {
+        assert_eq!(present_kind(false, 1), Present::Software);
+    }
+
+    #[test]
+    fn nothing_to_present_when_the_call_produced_nothing() {
+        assert_eq!(present_kind(false, 0), Present::Nothing);
+    }
 }
