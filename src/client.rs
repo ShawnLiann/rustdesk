@@ -4109,28 +4109,15 @@ pub fn start_video_thread<F, T>(
                             // load, and the alternative is a session that keeps
                             // asking for surfaces after the page stopped drawing
                             // them.
+                            // Evaluated before the decode, so a refusal seen on
+                            // the previous frame is honoured by this one.
                             #[cfg(all(target_os = "macos", feature = "hwcodec"))]
-                            {
-                                use std::sync::atomic::Ordering;
-                                handler.set_gpu_frames_wanted(
-                                    scrap::codec::should_request_surface(
-                                        gpu_frames
-                                            .as_ref()
-                                            .map(|switches| {
-                                                switches
-                                                    .draw_through_texture
-                                                    .load(Ordering::Relaxed)
-                                            })
-                                            .unwrap_or(false),
-                                        gpu_frames
-                                            .as_ref()
-                                            .map(|switches| {
-                                                switches.usable.load(Ordering::Relaxed)
-                                            })
-                                            .unwrap_or(false),
-                                    ),
-                                );
-                            }
+                            handler.set_gpu_frames_wanted(
+                                gpu_frames
+                                    .as_ref()
+                                    .map(|switches| switches.wants_surface())
+                                    .unwrap_or(false),
+                            );
                             let format_changed = handler.decoder.format() != format;
                             match handler.handle_frame(
                                 vf,

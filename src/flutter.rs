@@ -367,6 +367,14 @@ struct VideoRenderer {
         allow(dead_code)
     )]
     surfaces_usable: Arc<AtomicBool>,
+    /// Whether some display has a texture registered right now. Derived from
+    /// `map_display_sessions` in `register_pixelbuffer_texture`, never a second
+    /// copy of the state, and refreshed only when a registration changes.
+    #[cfg_attr(
+        not(all(target_os = "macos", feature = "hwcodec")),
+        allow(dead_code)
+    )]
+    has_texture: Arc<AtomicBool>,
 }
 
 impl Default for VideoRenderer {
@@ -449,6 +457,7 @@ impl Default for VideoRenderer {
             #[cfg(all(target_os = "macos", feature = "hwcodec"))]
             on_pixelbuffer_func,
             surfaces_usable: Arc::new(AtomicBool::new(true)),
+            has_texture: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -472,6 +481,15 @@ impl VideoRenderer {
                 },
             );
         }
+    }
+
+    /// Record that a frame could not be presented.
+    ///
+    /// The decoder already skipped the software copy for that frame, so the only
+    /// recovery is to stop asking: the next frame takes the byte path.
+    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+    fn note_refused(&self) {
+        self.surfaces_usable.store(false, Ordering::Relaxed);
     }
 
     fn register_pixelbuffer_texture(&self, display: usize, ptr: usize) {
@@ -515,7 +533,17 @@ impl VideoRenderer {
                 }
             }
         }
-    }
+    
+        // Property C2: a session may only ask for surfaces once some display has a
+        // texture to draw them on. This is the only place that state changes, and
+        // the write lock is already held.
+        self.has_texture.store(
+            sessions_lock
+                .values()
+                .any(|info| info.texture_rgba_ptr != usize::default()),
+            Ordering::Relaxed,
+        );
+}
 
     #[cfg(feature = "vram")]
     pub fn register_gpu_output(&self, display: usize, ptr: usize) {
@@ -633,7 +661,7 @@ impl VideoRenderer {
             // No texture for this display: nothing can be drawn from the surface,
             // so stop asking for them instead of dropping every frame.
             log::warn!("no texture for display {display}; decoded surfaces off");
-            self.surfaces_usable.store(false, Ordering::Relaxed);
+            self.note_refused();
             return false;
         }
         if info.size.0 != width || info.size.1 != height {
@@ -651,7 +679,7 @@ impl VideoRenderer {
             // Belt and braces: `surfaces_available` should have kept the session
             // from asking, but if it did not, fall back rather than drop frames.
             log::warn!("no surface entry point; decoded surfaces off");
-            self.surfaces_usable.store(false, Ordering::Relaxed);
+            self.note_refused();
             return false;
         };
         let accepted = unsafe {
@@ -672,7 +700,7 @@ impl VideoRenderer {
             info.notify_render_type = None;
             // Fall back to bytes from the next frame on: without this the session
             // keeps asking for surfaces and the last picture stays on screen.
-            self.surfaces_usable.store(false, Ordering::Relaxed);
+            self.note_refused();
             return false;
         }
         if info.notify_render_type != Some(RenderType::PixelBuffer) {
@@ -825,8 +853,11 @@ impl FlutterHandler {
         self.use_texture_render
             .store(crate::ui_interface::use_texture_render(), Ordering::Relaxed);
         // The user changed the option, so give surfaces another chance: this is
-        // the only way back after a refusal.
-        self.renderer.surfaces_usable.store(true, Ordering::Relaxed);
+        // the only way back after a refusal. Every session, because the renderer
+        // (and its flag) belongs to the session, not to the handler.
+        for handler in self.session_handlers.read().unwrap().values() {
+            handler.renderer.surfaces_usable.store(true, Ordering::Relaxed);
+        }
         self.display_rgbas.write().unwrap().clear();
     }
 }
@@ -1047,10 +1078,26 @@ impl InvokeUiSession for FlutterHandler {
         #[cfg(all(target_os = "macos", feature = "hwcodec"))]
         {
             if surfaces_available() {
-                return Some(SurfaceSwitches {
-                    draw_through_texture: self.use_texture_render.clone(),
-                    usable: self.renderer.surfaces_usable.clone(),
-                });
+                // The renderer owns both runtime flags: it is where a refusal is
+                // detected and where textures are registered. Resolved once per
+                // video thread, not per frame.
+                let renderer = self
+                    .session_handlers
+                    .read()
+                    .unwrap()
+                    .values()
+                    .next()
+                    .map(|handler| handler.renderer.clone());
+                if let Some(renderer) = renderer {
+                    return Some(SurfaceSwitches {
+                        draw_through_texture: self.use_texture_render.clone(),
+                        usable: renderer.surfaces_usable.clone(),
+                        consumer_ready: renderer.has_texture.clone(),
+                    });
+                }
+                // No session yet, so nothing can be drawn: fail closed and say so
+                // once, rather than asking for frames nobody consumes.
+                log::info!("no ui session yet; decoded surfaces off for this session");
             }
         }
         None

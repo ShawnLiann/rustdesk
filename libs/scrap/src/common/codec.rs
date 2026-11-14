@@ -118,12 +118,24 @@ pub(crate) enum Present {
 
 /// Whether a session should ask the decoder for surfaces.
 ///
-/// Pure on purpose, so the rule is testable on every platform. Both inputs come
-/// from the UI side: is it drawing through a texture, and has nothing gone wrong
-/// on that path since it last started drawing. Whether the decoder itself can
-/// produce a surface is checked where the decoder lives, not here.
-pub fn should_request_surface(draw_through_texture: bool, surfaces_usable: bool) -> bool {
-    draw_through_texture && surfaces_usable
+/// Pure on purpose, so the rule is testable on every platform. All three inputs
+/// come from the UI side:
+///
+///   - is it drawing through a texture at all;
+///   - has that path stayed healthy since it last started (a refused frame clears
+///     this, and only an option change sets it again);
+///   - is there a texture registered to draw on right now. An exported entry point
+///     is not enough: asking before a display has a texture loses those frames,
+///     because the decoder has already skipped its software copy.
+///
+/// Whether the decoder itself can produce a surface is checked where the decoder
+/// lives, not here.
+pub fn should_request_surface(
+    draw_through_texture: bool,
+    surfaces_usable: bool,
+    consumer_ready: bool,
+) -> bool {
+    draw_through_texture && surfaces_usable && consumer_ready
 }
 
 /// Decide what to present from what a decode call actually produced.
@@ -1350,21 +1362,38 @@ mod present_tests {
 
     #[test]
     fn surfaces_need_the_ui_to_draw_textures() {
-        assert!(!should_request_surface(false, true));
+        assert!(!should_request_surface(false, true, true));
     }
 
     #[test]
     fn surfaces_need_the_path_to_be_usable() {
-        assert!(!should_request_surface(true, false));
+        assert!(!should_request_surface(true, false, true));
     }
 
     #[test]
-    fn surfaces_never_when_neither_holds() {
-        assert!(!should_request_surface(false, false));
+    fn surfaces_need_a_registered_texture() {
+        assert!(!should_request_surface(true, true, false));
     }
 
     #[test]
-    fn surfaces_when_both_hold() {
-        assert!(should_request_surface(true, true));
+    fn surfaces_never_when_any_input_is_missing() {
+        for draw in [false, true] {
+            for usable in [false, true] {
+                for ready in [false, true] {
+                    let expected = draw && usable && ready;
+                    assert_eq!(
+                        should_request_surface(draw, usable, ready),
+                        expected,
+                        "draw={draw} usable={usable} ready={ready}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_texture_registered_after_start_turns_surfaces_on() {
+        assert!(!should_request_surface(true, true, false));
+        assert!(should_request_surface(true, true, true));
     }
 }
