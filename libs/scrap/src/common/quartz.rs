@@ -2,6 +2,26 @@ use crate::{quartz, Frame, Pixfmt};
 use std::io;
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex, TryLockError};
+use std::time::{Duration, Instant};
+
+/// Measurement-only budget: the copy this branch removes is only visible as a share of the wall
+/// second, so the capturer reports what it spent them on. Scaffold for `ci/n5a-instr-*`, never part
+/// of a PR branch.
+#[derive(Default)]
+struct FrameBudget {
+    dedupe: Duration,
+    bgra: Duration,
+    empty: u64,
+    sent: u64,
+    dropped: u64,
+    since: Option<Instant>,
+}
+
+enum FrameOutcome {
+    Empty,
+    Dropped(Duration),
+    Sent(Duration, Duration),
+}
 
 pub struct Capturer {
     inner: quartz::Capturer,
@@ -9,6 +29,7 @@ pub struct Capturer {
     /// The previous frame's surface, retained instead of copied: the compare reads both ranges
     /// where they already live.
     prev_surface: Option<quartz::RetainedSurface>,
+    budget: FrameBudget,
 }
 
 impl Capturer {
@@ -34,6 +55,7 @@ impl Capturer {
             inner,
             frame,
             prev_surface: None,
+            budget: FrameBudget::default(),
         })
     }
 
@@ -57,6 +79,42 @@ impl Capturer {
         same
     }
 
+    /// Add one frame to the current window and, every five seconds, say how the frames were spent:
+    /// `dedupe=` is the compare and the retain, `bgra=` the surface-to-BGRA copy, `dropped` the
+    /// frames that compared identical (`empty` is nothing new from the compositor).
+    fn note(&mut self, outcome: FrameOutcome) {
+        let now = Instant::now();
+        let since = *self.budget.since.get_or_insert(now);
+        match outcome {
+            FrameOutcome::Empty => self.budget.empty += 1,
+            FrameOutcome::Dropped(compare) => {
+                self.budget.dedupe += compare;
+                self.budget.dropped += 1;
+            }
+            FrameOutcome::Sent(compare, copy) => {
+                self.budget.dedupe += compare;
+                self.budget.bgra += copy;
+                self.budget.sent += 1;
+            }
+        }
+        let window = now - since;
+        if window < Duration::from_secs(5) {
+            return;
+        }
+        let secs = window.as_secs_f32();
+        log::info!(
+            "[FRAME] {:.1}s empty={} sent={} dropped={} dedupe={:.1} bgra={:.1} ms/s",
+            secs,
+            self.budget.empty,
+            self.budget.sent,
+            self.budget.dropped,
+            self.budget.dedupe.as_secs_f32() * 1000.0 / secs,
+            self.budget.bgra.as_secs_f32() * 1000.0 / secs,
+        );
+        self.budget = FrameBudget::default();
+        self.budget.since = Some(now);
+    }
+
     pub fn width(&self) -> usize {
         self.inner.width()
     }
@@ -78,10 +136,16 @@ impl crate::TraitCapturer for Capturer {
 
         match frame {
             Some(mut frame) => {
-                if self.same_as_previous(&frame) {
+                let compare = Instant::now();
+                let same = self.same_as_previous(&frame);
+                let compare = compare.elapsed();
+                if same {
+                    self.note(FrameOutcome::Dropped(compare));
                     return Err(io::ErrorKind::WouldBlock.into());
                 }
+                let copy = Instant::now();
                 frame.surface_to_bgra(self.height());
+                self.note(FrameOutcome::Sent(compare, copy.elapsed()));
                 Ok(Frame::PixelBuffer(PixelBuffer {
                     frame,
                     data: PhantomData,
@@ -90,7 +154,10 @@ impl crate::TraitCapturer for Capturer {
                 }))
             }
 
-            None => Err(io::ErrorKind::WouldBlock.into()),
+            None => {
+                self.note(FrameOutcome::Empty);
+                Err(io::ErrorKind::WouldBlock.into())
+            }
         }
     }
 }
