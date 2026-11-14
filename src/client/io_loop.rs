@@ -2917,6 +2917,8 @@ impl<T: InvokeUiSession> Remote<T> {
                   pixelbuffer: bool,
                   surface_info: scrap::codec::SurfaceInfo| {
                 *frame_count.write().unwrap() += 1;
+                #[cfg(not(all(target_os = "macos", feature = "hwcodec")))]
+                let _ = &surface_info;
                 if pixelbuffer {
                     handler.on_rgba(display, data);
                 } else {
