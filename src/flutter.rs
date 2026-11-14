@@ -670,7 +670,7 @@ impl VideoRenderer {
         if info.texture_rgba_ptr == usize::default() {
             // Same class as the missing entry above: a display that the peer
             // reports but the UI has not registered a texture for yet. Nothing to
-            // draw on, and nothing to fall back to either, so leave the latch.
+            // draw on, and nothing to fall back to either, so do not latch.
             hbb_common::throttled_log!(
                 LOG_INTERVAL,
                 warn,
@@ -686,7 +686,7 @@ impl VideoRenderer {
             hbb_common::throttled_log!(
                 LOG_INTERVAL,
                 warn,
-                "surface size ({width},{height}) differs from peer size ({},{}) on display {display}",
+                "surface size ({width},{height}) differs from peer size ({},{})",
                 info.size.0,
                 info.size.1
             );
