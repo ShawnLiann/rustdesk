@@ -2711,7 +2711,7 @@ impl VideoHandler {
         match &vf.union {
             Some(frame) => {
                 #[cfg(all(target_os = "macos", feature = "hwcodec"))]
-                let gpu = if self.gpu_frames_wanted {
+                let gpu = if self.gpu_frames_wanted && self.decoder.valid() {
                     Some(&mut *gpu)
                 } else {
                     None
@@ -2758,15 +2758,19 @@ impl VideoHandler {
         }
     }
 
-    /// Ask this session for decoded surfaces when the platform can present them.
+    /// Whether this session may ask for decoded surfaces.
     ///
-    /// `pub(crate)` until the client option that calls it lands: turning this on
-    /// today makes the video invisible rather than faster, because the renderer
-    /// call is the next slice and macOS cannot take the Windows `vram` branch.
+    /// Driven per frame by the UI's own switches. When on and the decoder can
+    /// produce a surface, the software copy is skipped, so the frame is only
+    /// visible if the renderer accepts it: the UI clears `usable` on a refusal so
+    /// the session falls back to bytes instead of freezing, and re-arms it when
+    /// the option changes.
     #[cfg(all(target_os = "macos", feature = "hwcodec"))]
     pub(crate) fn set_gpu_frames_wanted(&mut self, on: bool) {
-        self.gpu_frames_wanted = on;
-        log::info!("decoded surfaces wanted: {on}");
+        if self.gpu_frames_wanted != on {
+            self.gpu_frames_wanted = on;
+            log::info!("decoded surfaces wanted: {on}");
+        }
     }
 
     /// Reset the decoder, change format if it is Some
@@ -4029,11 +4033,14 @@ pub fn start_video_thread<F, T>(
     fps: Arc<RwLock<Option<usize>>>,
     chroma: Arc<RwLock<Option<Chroma>>>,
     discard_queue: Arc<RwLock<bool>>,
+    gpu_frames: Option<crate::ui_session_interface::SurfaceSwitches>,
     video_callback: F,
 ) where
     F: 'static + FnMut(usize, &mut scrap::ImageRgb, *mut c_void, bool, scrap::codec::SurfaceInfo) + Send,
     T: InvokeUiSession,
 {
+    #[cfg(not(all(target_os = "macos", feature = "hwcodec")))]
+    let _ = &gpu_frames;
     let mut video_callback = video_callback;
     let mut last_chroma = None;
     let is_view_camera = session.is_view_camera();
@@ -4088,6 +4095,32 @@ pub fn start_video_thread<F, T>(
                             let mut tmp_chroma = None;
                             #[cfg(all(target_os = "macos", feature = "hwcodec"))]
                             let mut gpu = GpuFrameOut::default();
+                            // Follow the UI switch frame by frame: one atomic
+                            // load, and the alternative is a session that keeps
+                            // asking for surfaces after the page stopped drawing
+                            // them.
+                            #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+                            {
+                                use std::sync::atomic::Ordering;
+                                handler.set_gpu_frames_wanted(
+                                    scrap::codec::should_request_surface(
+                                        gpu_frames
+                                            .as_ref()
+                                            .map(|switches| {
+                                                switches
+                                                    .draw_through_texture
+                                                    .load(Ordering::Relaxed)
+                                            })
+                                            .unwrap_or(false),
+                                        gpu_frames
+                                            .as_ref()
+                                            .map(|switches| {
+                                                switches.usable.load(Ordering::Relaxed)
+                                            })
+                                            .unwrap_or(false),
+                                    ),
+                                );
+                            }
                             let format_changed = handler.decoder.format() != format;
                             match handler.handle_frame(
                                 vf,
