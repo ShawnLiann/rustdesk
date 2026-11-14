@@ -648,6 +648,7 @@ impl VideoRenderer {
         height: usize,
         pixfmt: u32,
     ) -> bool {
+        const LOG_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
         let mut write_lock = self.map_display_sessions.write().unwrap();
         let opt_info = if !self.is_support_multi_ui_session {
             write_lock.values_mut().next()
@@ -659,7 +660,6 @@ impl VideoRenderer {
             // this state, so there is nothing to fall back to; do not latch, as
             // the entry is also missing transiently while a display switches
             // texture and a session-wide latch would outlive that.
-            const LOG_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
             hbb_common::throttled_log!(
                 LOG_INTERVAL,
                 warn,
@@ -668,10 +668,14 @@ impl VideoRenderer {
             return false;
         };
         if info.texture_rgba_ptr == usize::default() {
-            // No texture for this display: nothing can be drawn from the surface,
-            // so stop asking for them instead of dropping every frame.
-            log::warn!("no texture for display {display}; decoded surfaces off");
-            self.note_refused();
+            // Same class as the missing entry above: a display that the peer
+            // reports but the UI has not registered a texture for yet. Nothing to
+            // draw on, and nothing to fall back to either, so leave the latch.
+            hbb_common::throttled_log!(
+                LOG_INTERVAL,
+                warn,
+                "no texture for display {display}; surface dropped"
+            );
             return false;
         }
         if info.size.0 != width || info.size.1 != height {
@@ -679,11 +683,10 @@ impl VideoRenderer {
             // skipped the software copy for this frame, so refusing leaves the
             // last picture on screen. The plugin sizes its texture from the
             // dimensions it is handed, so the frame's own size wins.
-            const LOG_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
             hbb_common::throttled_log!(
                 LOG_INTERVAL,
                 warn,
-                "surface size ({width},{height}) differs from peer size ({},{})",
+                "surface size ({width},{height}) differs from peer size ({},{}) on display {display}",
                 info.size.0,
                 info.size.1
             );
