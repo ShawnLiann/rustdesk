@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    ffi::c_void,
     ops::{Deref, DerefMut},
     sync::{atomic::AtomicUsize, Arc, Mutex, RwLock},
 };
@@ -303,15 +302,6 @@ impl InvokeUiSession for SciterHandler {
 
     // The sciter UI has no texture path at all: it draws the RGBA buffer above.
     #[cfg(all(target_os = "macos", feature = "hwcodec"))]
-    fn on_pixelbuffer(
-        &self,
-        _display: usize,
-        _pixel_buffer: *mut c_void,
-        _width: usize,
-        _height: usize,
-        _pixfmt: u32,
-    ) {
-    }
 
     fn set_peer_info(&self, pi: &PeerInfo) {
         let mut pi_sciter = Value::map();
