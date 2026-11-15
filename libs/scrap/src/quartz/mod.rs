@@ -7,6 +7,7 @@ pub use self::frame::{Frame, RetainedSurface};
 mod capturer;
 mod config;
 mod display;
+pub mod fake;
 pub mod ffi;
 mod frame;
 
