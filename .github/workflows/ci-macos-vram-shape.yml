@@ -125,8 +125,13 @@ jobs:
       - name: Link the scrap test binary
         run: cargo test -p scrap --features hwcodec --lib --no-run
 
+      # `present_tests` matched no test and the step still went green (`0 passed;
+      # 4 filtered out`); the module is `presentation_tests`, and the count is
+      # asserted so an empty run cannot pass again.
       - name: Run the platform-independent decision tests
-        run: cargo test -p scrap --features hwcodec present_tests
+        run: |
+          cargo test -p scrap --features hwcodec --lib -- presentation_tests | tee /tmp/presentation-tests.log
+          grep -qE 'test result: ok\. 3 passed' /tmp/presentation-tests.log
 
       - name: Build rustdesk
         run: |
