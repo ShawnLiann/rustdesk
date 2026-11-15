@@ -4,6 +4,9 @@ use std::sync::{Arc, Mutex, TryLockError};
 use std::time::{Duration, Instant};
 use std::{io, mem};
 
+/// Measurement-only switch for the synthetic frame source; see `quartz::fake`.
+const FAKE_CAPTURE_ENV: &str = "RD_FAKE_CAPTURE";
+
 /// Measurement-only budget, the same one `ci/n5a-instr2-20261115` carries on the in-place branch,
 /// so the two builds print comparable columns. Scaffold for `ci/port-instr-*`, never part of a PR.
 ///
@@ -73,7 +76,11 @@ impl FrameBudget {
 }
 
 pub struct Capturer {
-    inner: quartz::Capturer,
+    /// `None` when the frame source is the synthetic one (`RD_FAKE_CAPTURE`), which has no
+    /// compositor stream behind it.
+    inner: Option<quartz::Capturer>,
+    /// Measurement-only synthetic source: the size it reports, plus the generator itself.
+    fake: Option<(usize, usize, quartz::fake::Source)>,
     frame: Arc<Mutex<Option<quartz::Frame>>>,
     saved_raw_data: Vec<u8>, // for faster compare and copy
     budget: FrameBudget,
@@ -82,6 +89,21 @@ pub struct Capturer {
 impl Capturer {
     pub fn new(display: Display) -> io::Result<Capturer> {
         let frame = Arc::new(Mutex::new(None));
+
+        if let Some(spec) = quartz::fake::Spec::from_env(FAKE_CAPTURE_ENV) {
+            let (w, h) = (spec.width, spec.height);
+            let source = quartz::fake::Source::new(spec);
+            hbb_common::log::warn!(
+                "[FAKE] synthetic capture source {w}x{h}; numbers are not from a real screen"
+            );
+            return Ok(Capturer {
+                inner: None,
+                fake: Some((w, h, source)),
+                frame,
+                saved_raw_data: Vec::new(),
+                budget: FrameBudget::default(),
+            });
+        }
 
         let f = frame.clone();
         let inner = quartz::Capturer::new(
@@ -99,7 +121,8 @@ impl Capturer {
         .map_err(|_| io::Error::from(io::ErrorKind::Other))?;
 
         Ok(Capturer {
-            inner,
+            inner: Some(inner),
+            fake: None,
             frame,
             saved_raw_data: Vec::new(),
             budget: FrameBudget::default(),
@@ -107,52 +130,60 @@ impl Capturer {
     }
 
     pub fn width(&self) -> usize {
-        self.inner.width()
+        match &self.fake {
+            Some((w, _, _)) => *w,
+            None => self.inner.as_ref().map(|i| i.width()).unwrap_or(0),
+        }
     }
 
     pub fn height(&self) -> usize {
-        self.inner.height()
+        match &self.fake {
+            Some((_, h, _)) => *h,
+            None => self.inner.as_ref().map(|i| i.height()).unwrap_or(0),
+        }
     }
 }
 
 impl crate::TraitCapturer for Capturer {
     fn frame<'a>(&'a mut self, _timeout_ms: std::time::Duration) -> io::Result<Frame<'a>> {
-        match self.frame.try_lock() {
-            Ok(mut handle) => {
-                let mut frame = None;
-                mem::swap(&mut frame, &mut handle);
-
-                match frame {
-                    Some(mut frame) => {
-                        let dedupe = Instant::now();
-                        let verdict =
-                            crate::would_block_if_equal(&mut self.saved_raw_data, frame.inner());
-                        let dedupe = dedupe.elapsed();
-                        if let Err(e) = verdict {
-                            self.budget.note(FrameOutcome::Dropped(dedupe));
-                            return Err(e);
-                        }
-                        let copy = Instant::now();
-                        frame.surface_to_bgra(self.height());
-                        self.budget.note(FrameOutcome::Sent(dedupe, copy.elapsed()));
-                        Ok(Frame::PixelBuffer(PixelBuffer {
-                            frame,
-                            data: PhantomData,
-                            width: self.width(),
-                            height: self.height(),
-                        }))
-                    }
-
-                    None => {
-                        self.budget.note(FrameOutcome::Empty);
-                        Err(io::ErrorKind::WouldBlock.into())
-                    }
+        let frame = if let Some((_, _, source)) = self.fake.as_mut() {
+            source.next_frame()
+        } else {
+            match self.frame.try_lock() {
+                Ok(mut handle) => {
+                    let mut frame = None;
+                    mem::swap(&mut frame, &mut handle);
+                    frame
                 }
+                Err(TryLockError::WouldBlock) => return Err(io::ErrorKind::WouldBlock.into()),
+                Err(TryLockError::Poisoned(..)) => return Err(io::ErrorKind::Other.into()),
+            }
+        };
+
+        match frame {
+            Some(mut frame) => {
+                let dedupe = Instant::now();
+                let verdict = crate::would_block_if_equal(&mut self.saved_raw_data, frame.inner());
+                let dedupe = dedupe.elapsed();
+                if let Err(e) = verdict {
+                    self.budget.note(FrameOutcome::Dropped(dedupe));
+                    return Err(e);
+                }
+                let copy = Instant::now();
+                frame.surface_to_bgra(self.height());
+                self.budget.note(FrameOutcome::Sent(dedupe, copy.elapsed()));
+                Ok(Frame::PixelBuffer(PixelBuffer {
+                    frame,
+                    data: PhantomData,
+                    width: self.width(),
+                    height: self.height(),
+                }))
             }
 
-            Err(TryLockError::WouldBlock) => Err(io::ErrorKind::WouldBlock.into()),
-
-            Err(TryLockError::Poisoned(..)) => Err(io::ErrorKind::Other.into()),
+            None => {
+                self.budget.note(FrameOutcome::Empty);
+                Err(io::ErrorKind::WouldBlock.into())
+            }
         }
     }
 }
