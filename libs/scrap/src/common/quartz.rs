@@ -4,6 +4,9 @@ use std::marker::PhantomData;
 use std::sync::{Arc, Mutex, TryLockError};
 use std::time::{Duration, Instant};
 
+/// Measurement-only switch for the synthetic frame source; see `quartz::fake`.
+const FAKE_CAPTURE_ENV: &str = "RD_FAKE_CAPTURE";
+
 /// Measurement-only budget: the copy this branch removes is only visible as a share of the wall
 /// second, so the capturer reports what it spent them on. Scaffold for `ci/n5a-instr-*`, never part
 /// of a PR branch.
@@ -28,7 +31,11 @@ enum FrameOutcome {
 }
 
 pub struct Capturer {
-    inner: quartz::Capturer,
+    /// `None` when the frame source is the synthetic one (`RD_FAKE_CAPTURE`), which has no
+    /// compositor stream behind it.
+    inner: Option<quartz::Capturer>,
+    /// Measurement-only synthetic source: the size it reports, plus the generator itself.
+    fake: Option<(usize, usize, quartz::fake::Source)>,
     frame: Arc<Mutex<Option<quartz::Frame>>>,
     /// The previous frame's surface, retained instead of copied: the compare reads both ranges
     /// where they already live.
@@ -39,6 +46,21 @@ pub struct Capturer {
 impl Capturer {
     pub fn new(display: Display) -> io::Result<Capturer> {
         let frame = Arc::new(Mutex::new(None));
+
+        if let Some(spec) = quartz::fake::Spec::from_env(FAKE_CAPTURE_ENV) {
+            let (w, h) = (spec.width, spec.height);
+            let source = quartz::fake::Source::new(spec);
+            hbb_common::log::warn!(
+                "[FAKE] synthetic capture source {w}x{h}; numbers are not from a real screen"
+            );
+            return Ok(Capturer {
+                inner: None,
+                fake: Some((w, h, source)),
+                frame,
+                prev_surface: None,
+                budget: FrameBudget::default(),
+            });
+        }
 
         let f = frame.clone();
         let inner = quartz::Capturer::new(
@@ -56,7 +78,8 @@ impl Capturer {
         .map_err(|_| io::Error::from(io::ErrorKind::Other))?;
 
         Ok(Capturer {
-            inner,
+            inner: Some(inner),
+            fake: None,
             frame,
             prev_surface: None,
             budget: FrameBudget::default(),
@@ -122,11 +145,17 @@ impl Capturer {
     }
 
     pub fn width(&self) -> usize {
-        self.inner.width()
+        match &self.fake {
+            Some((w, _, _)) => *w,
+            None => self.inner.as_ref().map(|i| i.width()).unwrap_or(0),
+        }
     }
 
     pub fn height(&self) -> usize {
-        self.inner.height()
+        match &self.fake {
+            Some((_, h, _)) => *h,
+            None => self.inner.as_ref().map(|i| i.height()).unwrap_or(0),
+        }
     }
 }
 
@@ -134,10 +163,14 @@ impl crate::TraitCapturer for Capturer {
     fn frame<'a>(&'a mut self, _timeout_ms: std::time::Duration) -> io::Result<Frame<'a>> {
         // Take the frame out and let the guard go before touching `self`: keeping the reference to
         // the previous surface needs `&mut self`, and the guard borrows `self.frame` while it lives.
-        let frame = match self.frame.try_lock() {
-            Ok(mut handle) => handle.take(),
-            Err(TryLockError::WouldBlock) => return Err(io::ErrorKind::WouldBlock.into()),
-            Err(TryLockError::Poisoned(..)) => return Err(io::ErrorKind::Other.into()),
+        let frame = if let Some((_, _, source)) = self.fake.as_mut() {
+            source.next_frame()
+        } else {
+            match self.frame.try_lock() {
+                Ok(mut handle) => handle.take(),
+                Err(TryLockError::WouldBlock) => return Err(io::ErrorKind::WouldBlock.into()),
+                Err(TryLockError::Poisoned(..)) => return Err(io::ErrorKind::Other.into()),
+            }
         };
 
         match frame {
