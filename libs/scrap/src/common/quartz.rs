@@ -18,9 +18,21 @@ const FAKE_CAPTURE_ENV: &str = "RD_FAKE_CAPTURE";
 struct FrameBudget {
     dedupe: Duration,
     bgra: Duration,
+    /// Time the synthetic source spent producing the frame (fill + pacing). Only the scaffold has
+    /// one; the real compositor's cost is not observable from here and must not be invented.
+    gen: Duration,
     none: u64,
     sent: u64,
     dropped: u64,
+    /// Attribution for `sent` on this branch. `surf=` distinct handles seen in the window,
+    /// `same=` frames whose handle equals the immediately previous frame's (proves the pool is
+    /// rotating), `id=` frames the identity rule answered "different" without comparing —
+    /// i.e. the retained previous surface came round again.
+    distinct: u64,
+    repeats: u64,
+    identity: u64,
+    seen: Vec<u32>,
+    last_id: Option<u32>,
     since: Option<Instant>,
 }
 
@@ -49,9 +61,10 @@ impl Capturer {
 
         if let Some(spec) = quartz::fake::Spec::from_env(FAKE_CAPTURE_ENV) {
             let (w, h) = (spec.width, spec.height);
+            let (pattern, fps, pool) = (spec.pattern.name(), spec.fps, spec.pool);
             let source = quartz::fake::Source::new(spec);
             hbb_common::log::warn!(
-                "[FAKE] synthetic capture source {w}x{h}; numbers are not from a real screen"
+                "[FAKE] synthetic capture source {w}x{h} pattern={pattern} fps={fps} pool={pool}; numbers are not from a real screen"
             );
             return Ok(Capturer {
                 inner: None,
@@ -94,6 +107,13 @@ impl Capturer {
     /// also covers a compositor that hands the same buffer back: that has to be reported as a
     /// difference, because dropping a static frame recovers and presenting a stale one does not.
     fn same_as_previous(&mut self, frame: &quartz::Frame) -> bool {
+        let id_hit = match &self.prev_surface {
+            Some(prev) => prev.same_handle(frame),
+            None => false,
+        };
+        if id_hit {
+            self.budget.identity += 1;
+        }
         let same = match &self.prev_surface {
             Some(prev) => prev.matches(frame),
             None => false,
@@ -111,6 +131,23 @@ impl Capturer {
     /// frames that compared identical, `sent` the frames handed on. `none` counts polls that
     /// produced no frame at all - either the compositor had nothing new or its callback held the
     /// mutex - so it cannot be read as "the screen is still".
+    /// Time the synthetic source spent producing a frame (fill + pacing).
+    fn note_gen(&mut self, took: Duration) {
+        self.budget.gen += took;
+    }
+
+    /// Record the surface a frame arrived on.
+    fn note_surface(&mut self, id: u32) {
+        if !self.budget.seen.contains(&id) {
+            self.budget.seen.push(id);
+            self.budget.distinct = self.budget.seen.len() as u64;
+        }
+        if self.budget.last_id == Some(id) {
+            self.budget.repeats += 1;
+        }
+        self.budget.last_id = Some(id);
+    }
+
     fn note(&mut self, outcome: FrameOutcome) {
         let now = Instant::now();
         let since = *self.budget.since.get_or_insert(now);
@@ -132,13 +169,17 @@ impl Capturer {
         }
         let secs = window.as_secs_f32();
         hbb_common::log::info!(
-            "[FRAME] {:.1}s none={} sent={} dropped={} dedupe={:.1} bgra={:.1} ms/s",
+            "[FRAME] {:.1}s none={} sent={} dropped={} dedupe={:.1} bgra={:.1} gen={:.1} surf={} same={} id={} ms/s",
             secs,
             self.budget.none,
             self.budget.sent,
             self.budget.dropped,
             self.budget.dedupe.as_secs_f32() * 1000.0 / secs,
             self.budget.bgra.as_secs_f32() * 1000.0 / secs,
+            self.budget.gen.as_secs_f32() * 1000.0 / secs,
+            self.budget.distinct,
+            self.budget.repeats,
+            self.budget.identity,
         );
         self.budget = FrameBudget::default();
         self.budget.since = Some(now);
@@ -163,8 +204,12 @@ impl crate::TraitCapturer for Capturer {
     fn frame<'a>(&'a mut self, _timeout_ms: std::time::Duration) -> io::Result<Frame<'a>> {
         // Take the frame out and let the guard go before touching `self`: keeping the reference to
         // the previous surface needs `&mut self`, and the guard borrows `self.frame` while it lives.
+        let mut gen = None;
         let frame = if let Some((_, _, source)) = self.fake.as_mut() {
-            source.next_frame()
+            let started = Instant::now();
+            let frame = source.next_frame();
+            gen = Some(started.elapsed());
+            frame
         } else {
             match self.frame.try_lock() {
                 Ok(mut handle) => handle.take(),
@@ -173,8 +218,12 @@ impl crate::TraitCapturer for Capturer {
             }
         };
 
+        if let Some(gen) = gen {
+            self.note_gen(gen);
+        }
         match frame {
             Some(mut frame) => {
+                self.note_surface(frame.surface_id());
                 let compare = Instant::now();
                 let same = self.same_as_previous(&frame);
                 let compare = compare.elapsed();

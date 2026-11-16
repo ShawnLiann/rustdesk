@@ -44,6 +44,11 @@ impl Frame {
         self.surface
     }
 
+    /// Identity of the surface behind this frame, for the measurement scaffold's counters.
+    pub fn surface_id(&self) -> u32 {
+        unsafe { IOSurfaceGetID(self.surface) }
+    }
+
     pub fn surface_to_bgra<'a>(&'a mut self, h: usize) {
         unsafe {
             let plane0 = IOSurfaceGetBaseAddressOfPlane(self.surface, 0);
@@ -115,6 +120,14 @@ impl RetainedSurface {
     ///
     /// Only this side is locked. The frame's surface is already locked by `Frame::new` for as long
     /// as the frame lives, and taking that lock again would count it twice without buying a thing.
+    /// Whether `frame` is the very surface this reference holds — the case `matches` answers
+    /// "different" without comparing. Split out so the caller can count how often the identity
+    /// rule fires: that count is the difference between "the content changed" and "our own
+    /// reference came back round".
+    pub fn same_handle(&self, frame: &Frame) -> bool {
+        self.0 == frame.surface()
+    }
+
     pub fn matches(&self, frame: &Frame) -> bool {
         if self.0 == frame.surface() {
             return false;

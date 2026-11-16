@@ -75,6 +75,17 @@ unsafe fn surface_attributes() -> *const c_void {
     outer
 }
 
+impl Pattern {
+    pub fn name(self) -> &'static str {
+        match self {
+            Pattern::Static => "static",
+            Pattern::Clock => "clock",
+            Pattern::Scroll => "scroll",
+            Pattern::Full => "full",
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Pattern {
     /// A new buffer with identical bytes every frame: the compare should answer "same".
@@ -92,6 +103,14 @@ pub struct Spec {
     pub height: usize,
     pub fps: u32,
     pub pattern: Pattern,
+    /// How many surfaces the generator cycles through (`RD_FAKE_POOL`, default 4, clamped 2..=8).
+    ///
+    /// The pool size is what decides whether the capturer ever sees the same handle twice in a row,
+    /// so it is the knob that reproduces "the compositor recycled a buffer" — the case the identity
+    /// rule in the in-place compare turns into a sent frame. Real compositors use a handful
+    /// (3–5 at 4K); tuning this is how a synthetic run gets to ask that question instead of
+    /// assuming one answer.
+    pub pool: usize,
 }
 
 impl Spec {
@@ -107,11 +126,17 @@ impl Spec {
         let fps = parts.next().and_then(|s| s.trim().parse().ok()).unwrap_or(30);
         let size = parts.next().unwrap_or("4096x2304");
         let (w, h) = size.split_once('x').unwrap_or(("4096", "2304"));
+        let pool = std::env::var("RD_FAKE_POOL")
+            .ok()
+            .and_then(|s| s.trim().parse::<usize>().ok())
+            .unwrap_or(POOL)
+            .clamp(2, 8);
         Some(Spec {
             width: w.trim().parse().ok()?,
             height: h.trim().parse().ok()?,
             fps,
             pattern,
+            pool,
         })
     }
 }
@@ -170,8 +195,9 @@ impl Source {
             None => self.next_at = Some(now + self.interval),
         }
         let spec = &self.spec;
+        let pool = spec.pool;
         unsafe {
-            while self.pool.len() < POOL {
+            while self.pool.len() < pool {
                 match Slot::new(spec) {
                     Some(slot) => self.pool.push(slot),
                     None => {
@@ -181,7 +207,7 @@ impl Source {
                 }
             }
             let slot = &mut self.pool[self.next_slot];
-            self.next_slot = (self.next_slot + 1) % POOL;
+            self.next_slot = (self.next_slot + 1) % pool;
             if CVPixelBufferLockBaseAddress(slot.pixel_buffer, LOCK_READ_WRITE) != 0 {
                 return None;
             }
@@ -238,30 +264,32 @@ impl Slot {
     }
 }
 
-unsafe fn fill(base: *mut u8, bytes_per_row: usize, alloc: usize, spec: &Spec, seq: u64) {
-    // The whole allocation, not just the visible rows: the compare reads `IOSurfaceGetAllocSize`
-    // bytes, so untouched padding would read as a difference and `static` would never be equal.
-    ptr::write_bytes(base, 0x40, alloc);
-    let w = spec.width;
+/// Touch only what the pattern needs — never the whole allocation on every tick.
+///
+/// The slots are already filled and whole-allocation-touched once in `Slot::new`, so the padding
+/// that `static` must keep equal stays equal without being rewritten here. Refilling 36 MiB per
+/// tick was 3.6 ms of work the real compositor never does; worse, it left every byte the compare
+/// reads freshly dirtied by this thread, so the `dedupe` column partly priced our own memset
+/// instead of the compare. `scroll` keeps its meaning (every row differs) at one byte per row.
+unsafe fn fill(base: *mut u8, bytes_per_row: usize, _alloc: usize, spec: &Spec, seq: u64) {
     match spec.pattern {
         Pattern::Static => {}
         Pattern::Full => *base = (seq as u8) | 1,
         Pattern::Clock => {
-            let (bx, by) = (w / 2, spec.height / 2);
-            let bw = 240.min(w);
+            let (bx, by) = (spec.width / 2, spec.height / 2);
+            let bw = 240.min(spec.width);
             let bh = 80.min(spec.height);
+            let value = u32::from(seq as u8) * 0x0101_0101;
             for y in by..(by + bh) {
-                let row = base.add(y * bytes_per_row + bx * 4);
+                let row = base.add(y * bytes_per_row + bx * 4) as *mut u32;
                 for x in 0..bw {
-                    *row.add(x * 4) = seq as u8;
+                    row.add(x).write_unaligned(value);
                 }
             }
         }
         Pattern::Scroll => {
             for y in 0..spec.height {
-                let row = base.add(y * bytes_per_row);
-                let v = (y as u64).wrapping_add(seq) as u8;
-                ptr::write_bytes(row, v, w * 4);
+                *base.add(y * bytes_per_row) = (y as u64).wrapping_add(seq) as u8;
             }
         }
     }
