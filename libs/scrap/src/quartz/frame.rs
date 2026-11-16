@@ -29,6 +29,11 @@ impl Frame {
         }
     }
 
+    /// Identity of the surface behind this frame, for the measurement scaffold's counters.
+    pub fn surface_id(&self) -> u32 {
+        unsafe { IOSurfaceGetID(self.surface) }
+    }
+
     #[inline]
     pub fn inner(&self) -> &[u8] {
         self.inner

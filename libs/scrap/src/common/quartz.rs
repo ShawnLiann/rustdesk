@@ -17,9 +17,21 @@ const FAKE_CAPTURE_ENV: &str = "RD_FAKE_CAPTURE";
 struct FrameBudget {
     dedupe: Duration,
     bgra: Duration,
+    /// Time the synthetic source spent producing the frame (its own fill + pacing), when there is
+    /// one. Without this column a window cannot tell "the pipeline is slow" from "our generator is
+    /// slow", and the generator is the one thing whose cost is not in the real path at all.
+    gen: Duration,
     none: u64,
     sent: u64,
     dropped: u64,
+    /// Distinct surface handles seen in this window, and how often a frame arrived on the same
+    /// handle as the one before it. Those two numbers are what attribute `sent`: a sent frame on a
+    /// repeated handle is the identity rule answering "different" without comparing, which is the
+    /// difference between "the content changed" and "the compositor recycled a buffer".
+    distinct: u64,
+    repeats: u64,
+    seen: Vec<u32>,
+    last_id: Option<u32>,
     since: Option<Instant>,
 }
 
@@ -41,6 +53,27 @@ impl FrameBudget {
     ///
     /// `none` counts polls that produced no frame at all, so a window with `sent=0 dropped=0` is
     /// void: it says nothing about the screen. Polls that lost the mutex are not counted at all.
+    ///
+    /// The two helpers below feed the same window before `note` runs. Time the synthetic source
+    /// spent producing a frame (fill + pacing). Only the scaffold has
+    /// one; the real compositor's cost is not observable from here and must not be invented.
+    fn note_gen(&mut self, took: Duration) {
+        self.gen += took;
+    }
+
+    /// Record the surface a frame arrived on: `surf=` counts distinct handles in this window,
+    /// `same=` counts frames whose handle equals the previous frame's.
+    fn note_surface(&mut self, id: u32) {
+        if !self.seen.contains(&id) {
+            self.seen.push(id);
+            self.distinct = self.seen.len() as u64;
+        }
+        if self.last_id == Some(id) {
+            self.repeats += 1;
+        }
+        self.last_id = Some(id);
+    }
+
     fn note(&mut self, outcome: FrameOutcome) {
         let now = Instant::now();
         let since = *self.since.get_or_insert(now);
@@ -62,13 +95,16 @@ impl FrameBudget {
         }
         let secs = window.as_secs_f32();
         hbb_common::log::info!(
-            "[FRAME] {:.1}s none={} sent={} dropped={} dedupe={:.1} bgra={:.1} ms/s",
+            "[FRAME] {:.1}s none={} sent={} dropped={} dedupe={:.1} bgra={:.1} gen={:.1} surf={} same={} ms/s",
             secs,
             self.none,
             self.sent,
             self.dropped,
             self.dedupe.as_secs_f32() * 1000.0 / secs,
             self.bgra.as_secs_f32() * 1000.0 / secs,
+            self.gen.as_secs_f32() * 1000.0 / secs,
+            self.distinct,
+            self.repeats,
         );
         *self = FrameBudget::default();
         self.since = Some(now);
@@ -92,9 +128,10 @@ impl Capturer {
 
         if let Some(spec) = quartz::fake::Spec::from_env(FAKE_CAPTURE_ENV) {
             let (w, h) = (spec.width, spec.height);
+            let (pattern, fps, pool) = (spec.pattern.name(), spec.fps, spec.pool);
             let source = quartz::fake::Source::new(spec);
             hbb_common::log::warn!(
-                "[FAKE] synthetic capture source {w}x{h}; numbers are not from a real screen"
+                "[FAKE] synthetic capture source {w}x{h} pattern={pattern} fps={fps} pool={pool}; numbers are not from a real screen"
             );
             return Ok(Capturer {
                 inner: None,
@@ -146,8 +183,12 @@ impl Capturer {
 
 impl crate::TraitCapturer for Capturer {
     fn frame<'a>(&'a mut self, _timeout_ms: std::time::Duration) -> io::Result<Frame<'a>> {
+        let mut gen = None;
         let frame = if let Some((_, _, source)) = self.fake.as_mut() {
-            source.next_frame()
+            let started = Instant::now();
+            let frame = source.next_frame();
+            gen = Some(started.elapsed());
+            frame
         } else {
             match self.frame.try_lock() {
                 Ok(mut handle) => {
@@ -159,9 +200,13 @@ impl crate::TraitCapturer for Capturer {
                 Err(TryLockError::Poisoned(..)) => return Err(io::ErrorKind::Other.into()),
             }
         };
+        if let Some(gen) = gen {
+            self.budget.note_gen(gen);
+        }
 
         match frame {
             Some(mut frame) => {
+                self.budget.note_surface(frame.surface_id());
                 let dedupe = Instant::now();
                 let verdict = crate::would_block_if_equal(&mut self.saved_raw_data, frame.inner());
                 let dedupe = dedupe.elapsed();
