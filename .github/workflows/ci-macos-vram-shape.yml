@@ -7,7 +7,7 @@ name: CI macOS (surface decode)
 # exactly that reason, so this branch builds the configuration the change is for.
 #
 # Scratch branch only: it pins hwcodec to the fork rev that carries the surface
-# API (Cargo.toml `[patch]`) and is never proposed as a PR.
+# API (a `rev` on `libs/scrap`'s hwcodec dependency) and is never proposed as a PR.
 
 on:
   workflow_dispatch:
@@ -125,7 +125,7 @@ jobs:
         run: cargo test -p scrap --features hwcodec --lib --no-run
 
       - name: Run the platform-independent decision tests
-        run: cargo test -p scrap --features hwcodec present_tests
+        run: cargo test -p scrap --features hwcodec --lib
 
       - name: Build rustdesk
         run: |
