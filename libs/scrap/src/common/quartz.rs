@@ -36,6 +36,11 @@ impl FrameBudget {
     /// dead-still ones. `bgra=` is the surface-to-BGRA copy, `sent`/`dropped` the frames handed on
     /// and the frames that compared identical.
     ///
+    /// On `ci/m5-instr-*` the hand-off no longer copies: the frame is handed on as the locked
+    /// plane, so `bgra=` times the plane resolution instead and reads ≈0 by construction. The
+    /// columns to compare across the M5 arms are `dedupe=`, `sent=`, `dropped=` and the host
+    /// process CPU, not `bgra=`.
+    ///
     /// `none` counts polls that produced no frame at all, so a window with `sent=0 dropped=0` is
     /// void: it says nothing about the screen. Polls that lost the mutex are not counted at all.
     fn note(&mut self, outcome: FrameOutcome) {
@@ -123,7 +128,7 @@ impl crate::TraitCapturer for Capturer {
                 mem::swap(&mut frame, &mut handle);
 
                 match frame {
-                    Some(mut frame) => {
+                    Some(frame) => {
                         let dedupe = Instant::now();
                         let verdict =
                             crate::would_block_if_equal(&mut self.saved_raw_data, frame.inner());
@@ -132,9 +137,11 @@ impl crate::TraitCapturer for Capturer {
                             self.budget.note(FrameOutcome::Dropped(dedupe));
                             return Err(e);
                         }
-                        let copy = Instant::now();
-                        frame.surface_to_bgra(self.height());
-                        self.budget.note(FrameOutcome::Sent(dedupe, copy.elapsed()));
+                        // M5 arm: the frame is handed on in place, so this bucket times the plane
+                        // resolution that replaces the copy instead of the copy itself.
+                        let handoff = Instant::now();
+                        let _ = frame.plane(self.height());
+                        self.budget.note(FrameOutcome::Sent(dedupe, handoff.elapsed()));
                         Ok(Frame::PixelBuffer(PixelBuffer {
                             frame,
                             data: PhantomData,
@@ -166,7 +173,7 @@ pub struct PixelBuffer<'a> {
 
 impl<'a> crate::TraitPixelBuffer for PixelBuffer<'a> {
     fn data(&self) -> &[u8] {
-        &*self.frame
+        self.frame.plane(self.height).0
     }
 
     fn width(&self) -> usize {
@@ -179,7 +186,7 @@ impl<'a> crate::TraitPixelBuffer for PixelBuffer<'a> {
 
     fn stride(&self) -> Vec<usize> {
         let mut v = Vec::new();
-        v.push(self.frame.stride());
+        v.push(self.frame.plane(self.height).1);
         v
     }
 

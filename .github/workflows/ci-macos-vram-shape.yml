@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - ci/port-instr2-20261115
+      - ci/m5-instr-20261118
 
 env:
   MAC_RUST_VERSION: "1.81"
@@ -141,11 +141,11 @@ jobs:
           set -e
           APP="flutter/build/macos/Build/Products/Release/RustDesk.app"
           test -d "$APP"
-          ditto -c -k --sequesterRsrc --keepParent "$APP" /tmp/RustDesk-base.zip
-          ls -la /tmp/RustDesk-base.zip
+          ditto -c -k --sequesterRsrc --keepParent "$APP" /tmp/RustDesk-m5.zip
+          ls -la /tmp/RustDesk-m5.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rustdesk-base-app
-          path: /tmp/RustDesk-base.zip
+          name: rustdesk-m5-app
+          path: /tmp/RustDesk-m5.zip
           retention-days: 7
