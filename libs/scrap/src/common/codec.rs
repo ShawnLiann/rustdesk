@@ -635,7 +635,11 @@ impl Decoder {
         _texture: &mut ImageTexture,
         _pixelbuffer: &mut bool,
         chroma: &mut Option<Chroma>,
+        want_gpu: bool,
+        surface: &mut crate::PixelBufferOutput,
     ) -> ResultType<bool> {
+        #[cfg(not(feature = "hwcodec"))]
+        let _ = (want_gpu, surface);
         match frame {
             video_frame::Union::Vp8s(vp8s) => {
                 if let Some(vp8) = &mut self.vp8 {
@@ -668,7 +672,14 @@ impl Decoder {
                 }
                 #[cfg(feature = "hwcodec")]
                 if let Some(decoder) = &mut self.h264_ram {
-                    return Decoder::handle_hwram_video_frame(decoder, h264s, rgb, &mut self.i420);
+                    return Decoder::handle_hwram_video_frame(
+                        decoder,
+                        h264s,
+                        rgb,
+                        &mut self.i420,
+                        surface,
+                        want_gpu,
+                    );
                 }
                 Err(anyhow!("don't support h264!"))
             }
@@ -682,7 +693,14 @@ impl Decoder {
                 }
                 #[cfg(feature = "hwcodec")]
                 if let Some(decoder) = &mut self.h265_ram {
-                    return Decoder::handle_hwram_video_frame(decoder, h265s, rgb, &mut self.i420);
+                    return Decoder::handle_hwram_video_frame(
+                        decoder,
+                        h265s,
+                        rgb,
+                        &mut self.i420,
+                        surface,
+                        want_gpu,
+                    );
                 }
                 Err(anyhow!("don't support h265!"))
             }
@@ -769,14 +787,31 @@ impl Decoder {
         frames: &EncodedVideoFrames,
         rgb: &mut ImageRgb,
         i420: &mut Vec<u8>,
+        pixelbuffer: &mut crate::PixelBufferOutput,
+        want_gpu: bool,
     ) -> ResultType<bool> {
         let mut ret = false;
+        // The slot belongs to this batch: the `?` below can return mid-batch.
+        *pixelbuffer = None;
+        #[cfg(not(target_os = "macos"))]
+        let _ = want_gpu;
         for h264 in frames.frames.iter() {
-            for image in decoder.decode(&h264.data)? {
-                // TODO: just process the last frame
-                if image.to_fmt(rgb, i420).is_ok() {
-                    ret = true;
-                }
+            #[cfg(target_os = "macos")]
+            let (images, surface) = decoder.decode_gpu(&h264.data, want_gpu)?;
+            #[cfg(not(target_os = "macos"))]
+            let images = decoder.decode(&h264.data)?;
+            // A call that delivered a surface has no software frames: present it, do not convert it.
+            #[cfg(target_os = "macos")]
+            if let Some(frame) = surface {
+                // Metadata only: the recorder sizes its output from `ImageRgb`, which this path never fills.
+                rgb.w = frame.width() as usize;
+                rgb.h = frame.height() as usize;
+                *pixelbuffer = Some(frame);
+                ret = true;
+                continue;
+            }
+            for image in images {
+                ret = present_software(pixelbuffer, image.to_fmt(rgb, i420).is_ok()) || ret;
             }
         }
         return Ok(ret);
@@ -845,6 +880,15 @@ impl Decoder {
         };
         (codec, chroma)
     }
+}
+
+/// The newest picture owns the slot: a software picture clears an earlier packet's surface.
+#[cfg(any(feature = "hwcodec", test))]
+fn present_software<T>(pixelbuffer: &mut Option<T>, software_ok: bool) -> bool {
+    if software_ok {
+        *pixelbuffer = None;
+    }
+    software_ok
 }
 
 #[cfg(any(feature = "hwcodec", feature = "mediacodec"))]
@@ -1154,4 +1198,40 @@ pub fn test_av1() {
             );
         });
     });
+}
+
+/// `test`-only, so a plain `cargo test` covers the rule without `hwcodec` or FFmpeg.
+#[cfg(test)]
+mod presentation_tests {
+    use super::*;
+
+    #[test]
+    fn a_software_picture_clears_the_surface_in_the_slot() {
+        let mut slot = Some(7u8);
+        assert!(present_software(&mut slot, true));
+        assert!(
+            slot.is_none(),
+            "the surface an earlier packet left here must not survive the newer software picture"
+        );
+    }
+
+    #[test]
+    fn nothing_to_present_leaves_the_surface_in_the_slot() {
+        let mut slot = Some(7u8);
+        assert!(!present_software(&mut slot, false));
+        assert_eq!(
+            slot,
+            Some(7),
+            "a packet that presents nothing must not discard the surface"
+        );
+    }
+
+    #[test]
+    fn a_later_software_picture_still_wins_after_an_earlier_one() {
+        let mut slot = Some(7u8);
+        assert!(present_software(&mut slot, true));
+        assert!(slot.is_none());
+        assert!(!present_software(&mut slot, false));
+        assert!(slot.is_none());
+    }
 }
