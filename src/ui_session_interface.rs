@@ -1758,6 +1758,10 @@ pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
     fn next_rgba(&self, display: usize);
     #[cfg(all(feature = "vram", feature = "flutter"))]
     fn on_texture(&self, display: usize, texture: *mut c_void);
+    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+    fn on_pixelbuffer(&self, _display: usize, _pixelbuffer: &scrap::PixelBufferFrame) -> bool {
+        false
+    }
     fn set_multiple_windows_session(&self, sessions: Vec<WindowsSession>);
     fn set_current_display(&self, disp_idx: i32);
     #[cfg(feature = "flutter")]
