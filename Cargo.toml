@@ -225,10 +225,11 @@ exclude = ["vdi/host"]
 # Upstream turned the macOS H.264 VideoToolbox encoder off in ec38eba
 # (`h264Encoder = 0` in cpp/mac/mac.mm and the commented-out h264_videotoolbox
 # entry in src/ffmpeg_ram/encode.rs). This pin is a fork branch off that same
-# master head which re-enables it, plus the EAGAIN tolerance the encoder needs.
+# master head which re-enables it, plus the EAGAIN tolerance the encoder needs and the
+# surface decode entry point (decode_gpu / Decoded) the client half calls.
 # Local-only: never proposed upstream.
 [patch."https://github.com/rustdesk-org/hwcodec"]
-hwcodec = { git = "https://github.com/ShawnLiann/hwcodec", rev = "ff118bf6b684d559b205512b9eddf2d5e34d0f38" }
+hwcodec = { git = "https://github.com/ShawnLiann/hwcodec", rev = "871238cdd103ccd4edc824b3aadaf9c82041effe" }
 
 [patch.crates-io]
 libxdo-sys = { path = "libs/libxdo-sys-stub" }
