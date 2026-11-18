@@ -14,10 +14,12 @@ on:
   push:
     branches:
       - ci/port-instr2-20261115
+      - ci/base-arm64-instr-20261118
 
 env:
   MAC_RUST_VERSION: "1.81"
   FLUTTER_VERSION: "3.24.5"
+  FLUTTER_MACOS_ARM_VERSION: "3.44.9"
   VCPKG_COMMIT_ID: "9e593bb18ea69cc5095e012465dcd675a822ed0d"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
 
@@ -148,4 +150,135 @@ jobs:
         with:
           name: rustdesk-base-app
           path: /tmp/RustDesk-base.zip
+          retention-days: 7
+
+  build-macos-arm64:
+    name: macOS arm64 (hwcodec, surfaces)
+    needs: [generate-bridge]
+    # Same intent as the Intel job: compile the macOS surface path and produce a
+    # runnable app. This job exists so an arm64 (M2 mini) host build is available
+    # for the N5a capture-side A/B on the M2 mini (M-series is what upstream cares about).
+    runs-on: macos-26
+    permissions:
+      contents: read
+    steps:
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Install build runtime
+        run: |
+          brew install llvm
+          if ! command -v pkg-config &>/dev/null; then brew install pkg-config; fi
+
+      - name: Install NASM
+        run: |
+          wget https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/macosx/nasm-2.16.03-macosx.zip
+          unzip -q nasm-2.16.03-macosx.zip
+          sudo cp nasm-2.16.03/nasm /usr/local/bin/nasm
+          nasm --version
+
+      - name: Install flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_MACOS_ARM_VERSION }}
+
+      - name: Keep CocoaPods for Flutter 3.44 (arm64)
+        run: flutter config --no-enable-swift-package-manager
+
+      - name: Workaround for flutter issue
+        shell: bash
+        run: |
+          cd "$(dirname "$(which flutter)")"
+          sed -i -e 's/_setFramesEnabledState(false);/\/\/_setFramesEnabledState(false);/g' ../packages/flutter/lib/src/scheduler/binding.dart
+          grep -n '_setFramesEnabledState(false);' ../packages/flutter/lib/src/scheduler/binding.dart
+
+      - name: Patch RustDesk sources for Flutter 3.44 (arm64)
+        shell: bash
+        run: |
+          brew install gnu-sed
+          export PATH="$(brew --prefix gnu-sed)/libexec/gnubin:$PATH"
+          bash .github/patches/apply_flutter_3.44_source_patches.sh
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ env.MAC_RUST_VERSION }}
+          targets: aarch64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: macos-arm64-base-surface
+
+      - name: Restore bridge files
+        uses: actions/download-artifact@v4
+        with:
+          # *.freezed.dart must match the freezed Flutter 3.44 resolves.
+          name: bridge-artifact-flutter-3.44
+          path: ./
+
+      - name: Setup vcpkg with GitHub Actions binary cache
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+          doNotCache: false
+
+      - name: Install vcpkg dependencies
+        run: |
+          if ! $VCPKG_ROOT/vcpkg install --x-install-root="$VCPKG_ROOT/installed"; then
+            find "${VCPKG_ROOT}/" -name "*.log" | while read -r f; do echo "$f:"; tail -n 50 "$f"; done
+            exit 1
+          fi
+
+      - name: Sync Cargo.lock for the pinned hwcodec
+        run: |
+          cargo update -p hwcodec
+          grep -A3 'name = "hwcodec"' Cargo.lock | head -8
+
+      - name: Check the macOS surface path compiles
+        run: cargo check -p scrap --features hwcodec
+
+      - name: Type-check every scrap test target
+        run: cargo check -p scrap --features hwcodec --tests
+
+      - name: Link the scrap test binary
+        run: cargo test -p scrap --features hwcodec --lib --no-run
+
+      - name: Run the platform-independent decision tests
+        run: cargo test -p scrap --features hwcodec present_tests
+
+      - name: Build rustdesk
+        run: |
+          MIN_MACOS_VERSION="12.3"
+          sed -i -e "s/MACOSX_DEPLOYMENT_TARGET\=[0-9]*.[0-9]*/MACOSX_DEPLOYMENT_TARGET=${MIN_MACOS_VERSION}/" build.py
+          sed -i -e "s/platform :osx, '.*'/platform :osx, '${MIN_MACOS_VERSION}'/" flutter/macos/Podfile
+          sed -i -e "s/osx_minimum_system_version = \"[0-9]*.[0-9]*\"/osx_minimum_system_version = \"${MIN_MACOS_VERSION}\"/" Cargo.toml
+          sed -i -e "s/MACOSX_DEPLOYMENT_TARGET = [0-9]*.[0-9]*;/MACOSX_DEPLOYMENT_TARGET = ${MIN_MACOS_VERSION};/" flutter/macos/Runner.xcodeproj/project.pbxproj
+          ./build.py --flutter --hwcodec --unix-file-copy-paste --screencapturekit
+
+      - name: Run the still-frame decision tests
+        run: cargo test -p scrap --features hwcodec still_frame_tests
+
+      - name: Package the app
+        run: |
+          set -e
+          APP="flutter/build/macos/Build/Products/Release/RustDesk.app"
+          test -d "$APP"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" /tmp/RustDesk-base-arm64.zip
+          ls -la /tmp/RustDesk-base-arm64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rustdesk-base-app-arm64
+          path: /tmp/RustDesk-base-arm64.zip
           retention-days: 7
