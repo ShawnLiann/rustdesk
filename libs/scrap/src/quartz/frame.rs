@@ -43,6 +43,14 @@ impl Frame {
         self.bgra_stride
     }
 
+    pub fn plane(&self, h: usize) -> (&[u8], usize) {
+        unsafe {
+            let stride = IOSurfaceGetBytesPerRowOfPlane(self.surface, 0);
+            let base = IOSurfaceGetBaseAddressOfPlane(self.surface, 0) as *const u8;
+            (slice::from_raw_parts(base, stride * h), stride)
+        }
+    }
+
     pub fn surface_to_bgra<'a>(&'a mut self, h: usize) {
         unsafe {
             let plane0 = IOSurfaceGetBaseAddressOfPlane(self.surface, 0);
