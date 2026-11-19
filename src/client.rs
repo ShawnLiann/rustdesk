@@ -4135,6 +4135,18 @@ pub fn start_video_thread<F, T>(
                                     let surface_info = gpu.surface_info();
                                     #[cfg(not(all(target_os = "macos", feature = "hwcodec")))]
                                     let surface_info = scrap::codec::SurfaceInfo::default();
+                                    // Counted here, on the thread that decoded the
+                                    // frame, so both counters share one basis: one
+                                    // per decoded frame. `pixelbuffer` is the flag
+                                    // that picks the RGBA path in `io_loop.rs`
+                                    // (true = bytes, false = surface), so it — not
+                                    // the pixel format — says which path this
+                                    // frame took.
+                                    if pixelbuffer {
+                                        crate::surface_diag::note_software();
+                                    } else {
+                                        crate::surface_diag::note_surface_frame();
+                                    }
                                     video_callback(
                                         display,
                                         &mut handler.rgb,
