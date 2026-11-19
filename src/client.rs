@@ -4135,6 +4135,12 @@ pub fn start_video_thread<F, T>(
                                     let surface_info = gpu.surface_info();
                                     #[cfg(not(all(target_os = "macos", feature = "hwcodec")))]
                                     let surface_info = scrap::codec::SurfaceInfo::default();
+                                    // A zeroed pixel format means this frame carries
+                                    // software pixels: count them so a session can
+                                    // report how many frames took each path.
+                                    if surface_info.pixfmt == 0 {
+                                        crate::surface_diag::note_software();
+                                    }
                                     video_callback(
                                         display,
                                         &mut handler.rgb,

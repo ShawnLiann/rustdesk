@@ -490,6 +490,7 @@ impl VideoRenderer {
     #[cfg(all(target_os = "macos", feature = "hwcodec"))]
     fn note_refused(&self) {
         self.surfaces_usable.store(false, Ordering::Relaxed);
+        crate::surface_diag::note_surface_refused();
     }
 
     fn register_pixelbuffer_texture(&self, display: usize, ptr: usize) {
@@ -717,6 +718,16 @@ impl VideoRenderer {
             self.note_refused();
             return false;
         }
+        // Positive evidence: the renderer took this surface. Without this line a
+        // measurement could not tell "presented" from "asked and presented
+        // nothing", because only the refusals used to be logged.
+        crate::surface_diag::note_surface_accepted();
+        hbb_common::throttled_log!(
+            LOG_INTERVAL,
+            info,
+            "presented a decoded surface ({})",
+            crate::surface_diag::summary()
+        );
         if info.notify_render_type != Some(RenderType::PixelBuffer) {
             info.notify_render_type = Some(RenderType::PixelBuffer);
             true
@@ -1687,9 +1698,10 @@ pub fn session_start_(
         let is_first_ui_session = session.session_handlers.read().unwrap().len() == 1;
         if !is_connected && is_first_ui_session {
             log::info!(
-                "Session {} start, use texture render: {}",
+                "Session {} start, use texture render: {}, plugin pixelbuffer entry: {}",
                 id,
-                session.use_texture_render.load(Ordering::Relaxed)
+                session.use_texture_render.load(Ordering::Relaxed),
+                surfaces_available()
             );
             let session = (*session).clone();
             std::thread::spawn(move || {
