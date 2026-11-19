@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - ci/dec-diag3-20261119
+      - ci/dec-diag4-20261120
 
 env:
   MAC_RUST_VERSION: "1.81"
@@ -131,13 +131,13 @@ jobs:
           set -e
           APP="flutter/build/macos/Build/Products/Release/RustDesk.app"
           test -d "$APP"
-          ditto -c -k --sequesterRsrc --keepParent "$APP" /tmp/RustDesk-decdiag3-intel.zip
-          ls -la /tmp/RustDesk-decdiag3-intel.zip
+          ditto -c -k --sequesterRsrc --keepParent "$APP" /tmp/RustDesk-decdiag4-intel.zip
+          ls -la /tmp/RustDesk-decdiag4-intel.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rustdesk-decdiag3-intel
-          path: /tmp/RustDesk-decdiag3-intel.zip
+          name: rustdesk-decdiag4-intel
+          path: /tmp/RustDesk-decdiag4-intel.zip
           retention-days: 7
 
   build-macos-arm64:
@@ -146,7 +146,9 @@ jobs:
     # Same intent as the Intel job: compile the hwcodec path and produce a
     # runnable app. This job exists so an arm64 (M2 mini) host build is available
     # for the S4 arm matrix without waiting on a build when the machine is free.
-    runs-on: macos-26
+    # macos-26 never acquired a hosted runner (three attempts, 0 steps); macos-15 is
+    # still arm64 and does get scheduled.
+    runs-on: macos-15
     permissions:
       contents: read
     steps:
@@ -250,11 +252,11 @@ jobs:
           set -e
           APP="flutter/build/macos/Build/Products/Release/RustDesk.app"
           test -d "$APP"
-          ditto -c -k --sequesterRsrc --keepParent "$APP" /tmp/RustDesk-decdiag3-arm64.zip
-          ls -la /tmp/RustDesk-decdiag3-arm64.zip
+          ditto -c -k --sequesterRsrc --keepParent "$APP" /tmp/RustDesk-decdiag4-arm64.zip
+          ls -la /tmp/RustDesk-decdiag4-arm64.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rustdesk-decdiag3-arm64
-          path: /tmp/RustDesk-decdiag3-arm64.zip
+          name: rustdesk-decdiag4-arm64
+          path: /tmp/RustDesk-decdiag4-arm64.zip
           retention-days: 7
