@@ -78,3 +78,10 @@ pub mod privacy_mode;
 pub mod virtual_display_manager;
 
 mod kcp_stream;
+
+/// Which presentation path ran (surface vs software); diagnostic only.
+#[cfg(all(target_os = "macos", feature = "hwcodec"))]
+mod surface_diag;
+#[cfg(not(all(target_os = "macos", feature = "hwcodec")))]
+#[path = "surface_diag_noop.rs"]
+mod surface_diag;
