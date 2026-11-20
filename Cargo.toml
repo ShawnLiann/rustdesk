@@ -220,8 +220,6 @@ android-wakelock = { git = "https://github.com/rustdesk-org/android-wakelock" }
 members = ["libs/scrap", "libs/hbb_common", "libs/base", "libs/enigo", "libs/clipboard", "libs/virtual_display", "libs/virtual_display/dylib", "libs/portable", "libs/remote_printer"]
 exclude = ["vdi/host"]
 
-# Patch libxdo-sys to use a stub implementation that doesn't require libxdo
-# This allows building and running on systems without libxdo installed (e.g., Wayland-only)
 # Upstream turned the macOS H.264 VideoToolbox encoder off in ec38eba
 # (`h264Encoder = 0` in cpp/mac/mac.mm and the commented-out h264_videotoolbox
 # entry in src/ffmpeg_ram/encode.rs). This pin is a fork branch off that same
@@ -231,6 +229,8 @@ exclude = ["vdi/host"]
 [patch."https://github.com/rustdesk-org/hwcodec"]
 hwcodec = { git = "https://github.com/ShawnLiann/hwcodec", rev = "871238cdd103ccd4edc824b3aadaf9c82041effe" }
 
+# Patch libxdo-sys to use a stub implementation that doesn't require libxdo
+# This allows building and running on systems without libxdo installed (e.g., Wayland-only)
 [patch.crates-io]
 libxdo-sys = { path = "libs/libxdo-sys-stub" }
 # Upstream reserves a frame's whole declared length as soon as its header is in, so a header alone
