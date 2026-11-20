@@ -13,9 +13,6 @@ name: CI macOS (master head, h264 VideoToolbox synth)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - ci/master-h264-dual-20261118
 
 env:
   MAC_RUST_VERSION: "1.81"
@@ -107,10 +104,13 @@ jobs:
             exit 1
           fi
 
-      - name: Sync Cargo.lock for the pinned hwcodec
+      - name: Check Cargo.lock carries the pinned hwcodec rev
         run: |
-          cargo update -p hwcodec
-          grep -A3 'name = "hwcodec"' Cargo.lock | head -8
+          pin=$(sed -n 's/^hwcodec = .*rev = "\([0-9a-f]*\)".*/\1/p' Cargo.toml)
+          lock=$(sed -n 's/^source = ".*hwcodec?rev=\([0-9a-f]*\)#.*/\1/p' Cargo.lock)
+          echo "Cargo.toml pin: $pin"
+          echo "Cargo.lock rev: $lock"
+          test -n "$pin" && test "$pin" = "$lock"
 
       # The point of this branch: compile the configuration that upstream CI
       # strips, and fail early rather than after a full app build.
@@ -228,10 +228,13 @@ jobs:
             exit 1
           fi
 
-      - name: Sync Cargo.lock for the pinned hwcodec
+      - name: Check Cargo.lock carries the pinned hwcodec rev
         run: |
-          cargo update -p hwcodec
-          grep -A3 'name = "hwcodec"' Cargo.lock | head -8
+          pin=$(sed -n 's/^hwcodec = .*rev = "\([0-9a-f]*\)".*/\1/p' Cargo.toml)
+          lock=$(sed -n 's/^source = ".*hwcodec?rev=\([0-9a-f]*\)#.*/\1/p' Cargo.lock)
+          echo "Cargo.toml pin: $pin"
+          echo "Cargo.lock rev: $lock"
+          test -n "$pin" && test "$pin" = "$lock"
 
       - name: Check the hwcodec configuration compiles
         run: cargo check -p scrap --features hwcodec
