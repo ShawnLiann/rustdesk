@@ -13,9 +13,6 @@ name: CI macOS (master head, h264 VideoToolbox synth)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - ci/master-h264-dual-20261118
 
 env:
   MAC_RUST_VERSION: "1.81"
