@@ -671,7 +671,8 @@ impl VideoRenderer {
             hbb_common::throttled_log!(LOG_INTERVAL, warn, "no texture for this surface; dropped");
             return false;
         }
-        if info.size.0 != width || info.size.1 != height {
+        if info.size != (0, 0) && (info.size.0 != width || info.size.1 != height) {
+            // A display reports (0, 0) until the peer size arrives; that is not a mismatch.
             // Unlike the RGBA path this must not refuse: the decoder already
             // skipped the software copy, so refusing would only leave the last
             // picture on screen. The plugin sizes its texture from the
