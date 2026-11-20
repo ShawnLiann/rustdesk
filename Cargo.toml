@@ -308,4 +308,4 @@ debug-assertions = false
 # to compile the macOS + hwcodec configuration and is never proposed as a PR,
 # so the PR branch does not carry this block.
 [patch."https://github.com/rustdesk-org/hwcodec"]
-hwcodec = { git = "https://github.com/ShawnLiann/hwcodec", rev = "73fb49aed6d46f0b4b6a62a692332008c3ae331f" }
+hwcodec = { git = "https://github.com/ShawnLiann/hwcodec", rev = "871238cdd103ccd4edc824b3aadaf9c82041effe" }
