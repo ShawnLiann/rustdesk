@@ -146,7 +146,7 @@ jobs:
     # Same intent as the Intel job: compile the hwcodec path and produce a
     # runnable app. This job exists so an arm64 (M2 mini) host build is available
     # for the S4 arm matrix without waiting on a build when the machine is free.
-    runs-on: macos-26
+    runs-on: macos-15  # macos-26 arm64 never acquired a runner (3 cancels, 15m each); see OWNER-QUEUE §15
     permissions:
       contents: read
     steps:
