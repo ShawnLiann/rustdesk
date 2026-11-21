@@ -221,13 +221,14 @@ members = ["libs/scrap", "libs/hbb_common", "libs/base", "libs/enigo", "libs/cli
 exclude = ["vdi/host"]
 
 # Upstream turned the macOS H.264 VideoToolbox encoder off in ec38eba
-# (`h264Encoder = 0` in cpp/mac/mac.mm and the commented-out h264_videotoolbox
-# entry in src/ffmpeg_ram/encode.rs). This pin is a fork branch off that same
-# master head which re-enables it, plus the EAGAIN tolerance the encoder needs and the
-# surface decode entry point (decode_gpu / Decoded) the client half calls.
-# Local-only: never proposed upstream.
+# (`h264Encoder = 0` in cpp/common/platform/mac/mac.mm and the commented-out
+# entry in src/ffmpeg_ram/encode.rs). This is the staging pin for the consumer
+# switch: it carries the Apple-only surface decode entry point
+# (`ffmpeg_ram_decode_surface`) only, without the encoder unlock. Do not cut an
+# app from this branch; the final pin is the fork-only branch that adds the
+# unlock to this tree. Local-only: never proposed upstream.
 [patch."https://github.com/rustdesk-org/hwcodec"]
-hwcodec = { git = "https://github.com/ShawnLiann/hwcodec", rev = "871238cdd103ccd4edc824b3aadaf9c82041effe" }
+hwcodec = { git = "https://github.com/ShawnLiann/hwcodec", rev = "568b5debd03ac241181fbaf21e927d48fe356d0a" }
 
 # Patch libxdo-sys to use a stub implementation that doesn't require libxdo
 # This allows building and running on systems without libxdo installed (e.g., Wayland-only)
