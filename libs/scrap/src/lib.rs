@@ -15,7 +15,7 @@ pub use common::*;
 /// What the renderer side actually shares with the Windows path is
 /// `ImageTexture`, not this type.
 #[cfg(all(target_os = "macos", feature = "hwcodec"))]
-pub use ::hwcodec::ffmpeg_ram::pixelbuffer::PixelBufferFrame;
+pub use common::pixelbuffer::PixelBufferFrame;
 #[cfg(all(target_os = "macos", feature = "hwcodec"))]
 pub type PixelBufferOutput = Option<PixelBufferFrame>;
 
