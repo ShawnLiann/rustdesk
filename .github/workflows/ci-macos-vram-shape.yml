@@ -134,11 +134,11 @@ jobs:
           set -e
           APP="flutter/build/macos/Build/Products/Release/RustDesk.app"
           test -d "$APP"
-          ditto -c -k --sequesterRsrc --keepParent "$APP" /tmp/RustDesk-base-arm64.zip
-          ls -la /tmp/RustDesk-base.zip
+          ditto -c -k --sequesterRsrc --keepParent "$APP" /tmp/RustDesk-m5-arm64.zip
+          ls -la /tmp/RustDesk-m5-arm64.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rustdesk-base-arm64-app
-          path: /tmp/RustDesk-base.zip
+          name: rustdesk-m5-arm64-app
+          path: /tmp/RustDesk-m5-arm64.zip
           retention-days: 7
