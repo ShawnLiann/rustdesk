@@ -17,7 +17,7 @@ use hwcodec::{
         Quality::{self, *},
         RateControl::{self, *},
     },
-    ffmpeg::AVPixelFormat,
+    ffmpeg::{AVHWDeviceType, AVPixelFormat},
     ffmpeg_ram::{
         decode::{DecodeContext, DecodeFrame, Decoder},
         encode::{EncodeContext, EncodeFrame, Encoder},
@@ -377,29 +377,37 @@ impl HwRamDecoder {
 
 #[cfg(all(target_os = "macos", feature = "hwcodec"))]
 impl HwRamDecoder {
-    /// Decode one packet and also ask VideoToolbox for the decoded surface.
+    /// Decode one packet, asking VideoToolbox for the surface when `want_gpu`.
     ///
-    /// A second entry point, not a flag on `decode`: every caller keeps its
-    /// signature, and `want_gpu` travels with the packet because the decoder
-    /// decides during the call whether it can skip the software transfer; what
-    /// it produced is read from the return value, never assumed.
+    /// The surface is borrowed from the decoder and dies on the next decode, so
+    /// it is retained here before the call returns. A call that produced no
+    /// usable surface has already consumed the packet, so it is decoded again
+    /// to keep the session on the software path instead of losing a frame.
     pub fn decode_gpu<'a>(
         &'a mut self,
         data: &[u8],
         want_gpu: bool,
     ) -> ResultType<HwRamDecoded<'a>> {
-        let mut decoded = self
-            .decoder
-            .decode_gpu(data, want_gpu)
-            .map_err(|e| anyhow!(e))?;
-        let pixelbuffer = decoded.pixelbuffer.take();
-        let frames: &'a mut Vec<DecodeFrame> = decoded.frames;
+        if want_gpu && self.decoder.ctx.device_type == AVHWDeviceType::AV_HWDEVICE_TYPE_VIDEOTOOLBOX
+        {
+            if let Ok(surface) = self.decoder.decode_surface(data) {
+                if let Some(pixelbuffer) =
+                    unsafe { crate::PixelBufferFrame::retain_from_borrowed(surface) }
+                {
+                    return Ok(HwRamDecoded {
+                        images: Vec::new(),
+                        pixelbuffer: Some(pixelbuffer),
+                    });
+                }
+            }
+        }
+        let frames = self.decoder.decode(data).map_err(|e| anyhow!(e))?;
         Ok(HwRamDecoded {
             images: frames
                 .iter()
                 .map(|f| HwRamDecoderImage { frame: f })
                 .collect(),
-            pixelbuffer,
+            pixelbuffer: None,
         })
     }
 }

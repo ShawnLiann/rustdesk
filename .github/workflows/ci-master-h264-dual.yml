@@ -4,8 +4,9 @@ name: CI macOS (master head, h264 VideoToolbox synth)
 # what the question needs:
 #   * the texture plugin is pinned to master + plugin#2 (fix-texture-lifetime)
 #     + our macOS-only commits (fork branch -> pubspec `ref`),
-#   * hwcodec is pinned to a fork rev that re-enables the VideoToolbox h264
-#     encoder (Cargo.toml `[patch]`); upstream turned it off in ec38eba.
+#   * hwcodec is pinned to a fork rev that carries the Apple-only surface decode
+#     entry point (Cargo.toml `[patch]`); the fork-only consumption pin adds
+#     the VideoToolbox h264 encoder unlock that upstream turned off in ec38eba.
 # Neither pin is proposed as a PR. Scratch branch only.
 #
 # Two jobs on purpose: x86_64 for the Intel iMac (macOS 12) and arm64 for the
