@@ -1,4 +1,4 @@
-name: CI macOS (surface decode)
+name: CI macOS arm64 (surface decode)
 
 # Compile evidence for macOS-only code that upstream CI never builds: the
 # upstream job builds x86_64-unknown-linux-gnu with default features, where
@@ -11,9 +11,6 @@ name: CI macOS (surface decode)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - ci/m5-instr-20261118
 
 env:
   MAC_RUST_VERSION: "1.81"
@@ -25,10 +22,10 @@ jobs:
   generate-bridge:
     uses: ./.github/workflows/bridge.yml
 
-  build-macos-intel:
-    name: macOS x86_64 (hwcodec, surfaces)
+  build-macos-arm64:
+    name: macOS arm64 (hwcodec, surfaces)
     needs: [generate-bridge]
-    runs-on: macos-15-intel
+    runs-on: macos-15
     permissions:
       contents: read
     steps:
@@ -52,11 +49,7 @@ jobs:
           if ! command -v pkg-config &>/dev/null; then brew install pkg-config; fi
 
       - name: Install NASM
-        run: |
-          wget https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/macosx/nasm-2.16.03-macosx.zip
-          unzip -q nasm-2.16.03-macosx.zip
-          sudo cp nasm-2.16.03/nasm /usr/local/bin/nasm
-          nasm --version
+        run: brew install nasm && nasm --version
 
       - name: Install flutter
         uses: subosito/flutter-action@v2
@@ -79,11 +72,11 @@ jobs:
         uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: ${{ env.MAC_RUST_VERSION }}
-          targets: x86_64-apple-darwin
+          targets: aarch64-apple-darwin
 
       - uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: macos-intel-surface
+          prefix-key: macos-arm64-surface
 
       - name: Restore bridge files
         uses: actions/download-artifact@v4
@@ -141,11 +134,11 @@ jobs:
           set -e
           APP="flutter/build/macos/Build/Products/Release/RustDesk.app"
           test -d "$APP"
-          ditto -c -k --sequesterRsrc --keepParent "$APP" /tmp/RustDesk-m5.zip
-          ls -la /tmp/RustDesk-m5.zip
+          ditto -c -k --sequesterRsrc --keepParent "$APP" /tmp/RustDesk-m5-arm64.zip
+          ls -la /tmp/RustDesk-m5-arm64.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rustdesk-m5-app
-          path: /tmp/RustDesk-m5.zip
+          name: rustdesk-m5-arm64-app
+          path: /tmp/RustDesk-m5-arm64.zip
           retention-days: 7
