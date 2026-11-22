@@ -93,8 +93,8 @@ dependencies:
   texture_rgba_renderer:
     git:
       url: https://github.com/ShawnLiann/flutter_texture_rgba_renderer
-      # master + plugin#2 (fix-texture-lifetime) + our macOS-only commits.
-      ref: fe1cca9bfd164ad39ccdac48290e6da50849ce48
+      # PLUGIN regrow: accept a decoded CVPixelBuffer without copying it (slim/p3-minimal).
+      ref: c6bc24837ddbe940a4e530f780da7a19d6521191
   percent_indicator: ^4.2.2
   dropdown_button2: ^2.0.0
   flutter_gpu_texture_renderer:
