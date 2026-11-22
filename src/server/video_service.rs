@@ -1491,6 +1491,10 @@ fn check_qos(
         bail!("SWITCH");
     }
     if second_instant.elapsed() > Duration::from_secs(1) {
+        // fork-only measurement: report the frames actually sent this second. The QoS
+        // controller picks the frame rate, so CPU% alone cannot be compared across arms;
+        // frames/s lets the same run be reported as ms CPU per frame.
+        log::info!("[FRAME] 1.0s sent={}", *send_counter);
         *second_instant = Instant::now();
         video_qos.update_display_data(&name, *send_counter);
         *send_counter = 0;
