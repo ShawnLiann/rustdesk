@@ -887,6 +887,21 @@ impl FlutterHandler {
         }
         self.display_rgbas.write().unwrap().clear();
     }
+
+    #[inline]
+    fn log_software_frame(&self) {
+        // Both on_rgba variants call this per arrived frame; this line names
+        // the path the counters were incremented for, at the same 30 s cadence as
+        // the surface line. Printed on arrival: a frame the renderer later drops
+        // still counts as handed over, which is what the module doc says.
+        const LOG_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+        hbb_common::throttled_log!(
+            LOG_INTERVAL,
+            info,
+            "frame handed to the software path ({})",
+            crate::surface_diag::summary()
+        );
+    }
 }
 
 impl InvokeUiSession for FlutterHandler {
@@ -1084,21 +1099,6 @@ impl InvokeUiSession for FlutterHandler {
 
     // unused in flutter
     fn adapt_size(&self) {}
-
-    #[inline]
-    fn log_software_frame(&self) {
-        // Both presentation functions below run per arrived frame; this line names
-        // the path the counters were incremented for, at the same 30 s cadence as
-        // the surface line. Printed on arrival: a frame the renderer drops below
-        // still counts as handed over, which is what the module doc says.
-        const LOG_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
-        hbb_common::throttled_log!(
-            LOG_INTERVAL,
-            info,
-            "frame handed to the software path ({})",
-            crate::surface_diag::summary()
-        );
-    }
 
     #[inline]
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
