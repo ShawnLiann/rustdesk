@@ -304,8 +304,12 @@ debug-assertions = false
 # ── CI pin: scratch branch ci/impl-macos-vram-shape only ───────────────────
 # The surface API (`decode_gpu`, `PixelBufferFrame`) is not in upstream hwcodec
 # yet; it lives on the fork branch `ci/p53-iosurface-20261114`, which is
-# rustdesk-org/hwcodec#53 plus a preventive IOSurface check. This branch exists
+# rustdesk-org/hwcodec#53 plus a preventive IOSurface check. This pin is that
+# branch plus the two VideoToolbox H.264 encoder unlocks (mac.mm + encode.rs,
+# 2 files +13/-11, no API change), because without them a host built from this
+# tree advertises hevc_videotoolbox only and cannot encode H.264 -- which reads
+# as a measurement failure instead of a build-identity one. This branch exists
 # to compile the macOS + hwcodec configuration and is never proposed as a PR,
 # so the PR branch does not carry this block.
 [patch."https://github.com/rustdesk-org/hwcodec"]
-hwcodec = { git = "https://github.com/ShawnLiann/hwcodec", rev = "73fb49aed6d46f0b4b6a62a692332008c3ae331f" }
+hwcodec = { git = "https://github.com/ShawnLiann/hwcodec", rev = "871238cdd103ccd4edc824b3aadaf9c82041effe" }
