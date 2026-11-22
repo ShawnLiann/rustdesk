@@ -45,7 +45,7 @@ pub mod hwcodec;
 #[cfg(feature = "mediacodec")]
 pub mod mediacodec;
 #[cfg(all(target_os = "macos", feature = "hwcodec"))]
-pub mod pixelbuffer;
+pub mod surface_handoff;
 pub mod vpxcodec;
 #[cfg(feature = "vram")]
 pub mod vram;
