@@ -8,16 +8,16 @@
 //! Two bases, and the field names say which is which:
 //!
 //! * `frames_surface` / `frames_software` are counted on the video thread, once
-//!   per decoded frame, so they add up to the frames a session presented.
+//!   per decoded frame, so they add up to the frames the session handed to the renderer; a refused frame still counts as handed over.
 //! * `renderer_refused` is counted per presentation call, once per UI window, so
 //!   with two windows open it can exceed `frames_surface`. Do not add it to the
 //!   other two; read it as "how often the renderer said no".
 //!
 //! Counters are process-wide and cleared at the start of every UI session, so a
-//! measurement that opens one session gets that session's numbers.
+//! measurement that opens one session gets that session's numbers. Two connections in one process share them: the later session's reset clears the earlier one's numbers.
 //!
 //! Diagnostic only -- nothing here changes behaviour, and reading them costs an
-//! atomic load.
+//! atomic load. The three numbers are read separately, so `counts()` is not an atomic snapshot.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -35,7 +35,7 @@ pub fn note_software() {
     FRAMES_SOFTWARE.fetch_add(1, Ordering::Relaxed);
 }
 
-/// The renderer refused a surface, or the session had to drop one.
+/// The renderer refused a surface. Frames dropped before presentation are not counted here.
 pub fn note_renderer_refused() {
     RENDERER_REFUSED.fetch_add(1, Ordering::Relaxed);
 }

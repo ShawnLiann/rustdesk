@@ -1485,6 +1485,18 @@ impl InvokeUiSession for FlutterHandler {
 impl FlutterHandler {
     #[inline]
     fn on_rgba_soft_render(&self, display: usize, rgba: &mut scrap::ImageRgb) {
+        // The surface path prints its counters when the renderer accepts a surface; the software
+        // path counted frames but said nothing, so a `use-texture-render=0` run had to infer fps
+        // from "Set fps to". Same fields and same 30 s cadence as the surface line, so the two
+        // arms are read the same way. Printed before the buffer check: a frame dropped here still
+        // arrived, and the counters are incremented on the video thread either way.
+        const LOG_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+        hbb_common::throttled_log!(
+            LOG_INTERVAL,
+            info,
+            "frame presented by the software path ({})",
+            crate::surface_diag::summary()
+        );
         // If the current rgba is not fetched by flutter, i.e., is valid.
         // We give up sending a new event to flutter.
         let mut rgba_write_lock = self.display_rgbas.write().unwrap();
