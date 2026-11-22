@@ -46,6 +46,8 @@ pub mod hwcodec;
 pub mod mediacodec;
 #[cfg(all(target_os = "macos", feature = "hwcodec"))]
 pub mod surface_handoff;
+// DEVKNOB — measure branches only; never in a PR (NOTES/DEVKNOBS.md) — removed before any PR.
+pub mod devknobs;
 pub mod vpxcodec;
 #[cfg(feature = "vram")]
 pub mod vram;

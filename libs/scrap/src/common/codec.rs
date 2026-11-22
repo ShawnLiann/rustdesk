@@ -135,6 +135,11 @@ pub fn should_request_surface(
     surfaces_usable: bool,
     consumer_ready: bool,
 ) -> bool {
+    // DEVKNOB — measure branches only; never in a PR (NOTES/DEVKNOBS.md): one binary can be its own
+    // zero-copy-off control. Default is off, so this is a no-op upstream.
+    if super::devknobs::no_surface() {
+        return false;
+    }
     draw_through_texture && surfaces_usable && consumer_ready
 }
 
