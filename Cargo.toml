@@ -224,11 +224,11 @@ exclude = ["vdi/host"]
 # (`h264Encoder = 0` in cpp/common/platform/mac/mac.mm and the commented-out
 # entry in src/ffmpeg_ram/encode.rs). This pin is the fork-only branch that adds
 # the two encoder unlocks to the regrown Apple-only surface decode entry point
-# (`ffmpeg_ram_decode_surface`): 6 files +385/-15, of which the surface half is
+# (`ffmpeg_ram_decode_surface`): 6 files +391/-15, of which the surface half is
 # the shape proposed upstream and the unlock never goes upstream. Local-only:
 # never proposed upstream.
 [patch."https://github.com/rustdesk-org/hwcodec"]
-hwcodec = { git = "https://github.com/ShawnLiann/hwcodec", rev = "498d66337fb41726e8ec88f3f25d1c7b6afc39fe" }
+hwcodec = { git = "https://github.com/ShawnLiann/hwcodec", rev = "e0d844786fee628162f62960a53a9cd8b540f5ed" }
 
 # Patch libxdo-sys to use a stub implementation that doesn't require libxdo
 # This allows building and running on systems without libxdo installed (e.g., Wayland-only)
