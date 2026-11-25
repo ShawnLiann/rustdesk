@@ -77,6 +77,8 @@ use base::{
     message_proto::{option_message::BoolOption, *},
 };
 pub use helper::*;
+#[cfg(all(target_os = "macos", feature = "hwcodec"))]
+use scrap::codec::GpuFrameOut;
 use scrap::{
     codec::Decoder,
     record::{Recorder, RecorderContext},
@@ -2649,6 +2651,13 @@ pub struct VideoHandler {
     _display: usize, // useful for debug
     fail_counter: usize,
     first_frame: bool,
+    /// Whether this session asked for decoded surfaces.
+    ///
+    /// Kept here and not on the decoder: the decoder is replaced on every
+    /// format change and on the failure-recovery reset, which would silently
+    /// turn the path off mid-session and never turn it back on.
+    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+    gpu_frames_wanted: bool,
 }
 
 impl VideoHandler {
@@ -2681,6 +2690,8 @@ impl VideoHandler {
             _display,
             fail_counter: 0,
             first_frame: true,
+            #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+            gpu_frames_wanted: false,
         }
     }
 
@@ -2691,6 +2702,7 @@ impl VideoHandler {
         vf: VideoFrame,
         pixelbuffer: &mut bool,
         chroma: &mut Option<Chroma>,
+        #[cfg(all(target_os = "macos", feature = "hwcodec"))] gpu: &mut GpuFrameOut,
     ) -> ResultType<bool> {
         let format = CodecFormat::from(&vf);
         if format != self.decoder.format() {
@@ -2698,12 +2710,20 @@ impl VideoHandler {
         }
         match &vf.union {
             Some(frame) => {
+                #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+                let gpu = if self.gpu_frames_wanted && self.decoder.valid() {
+                    Some(&mut *gpu)
+                } else {
+                    None
+                };
                 let res = self.decoder.handle_video_frame(
                     frame,
                     &mut self.rgb,
                     &mut self.texture,
                     pixelbuffer,
                     chroma,
+                    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+                    gpu,
                 );
                 if res.as_ref().is_ok_and(|x| *x) {
                     self.fail_counter = 0;
@@ -2735,6 +2755,21 @@ impl VideoHandler {
                 res
             }
             _ => Ok(false),
+        }
+    }
+
+    /// Whether this session may ask for decoded surfaces.
+    ///
+    /// Driven per frame by the UI's own switches. When on and the decoder can
+    /// produce a surface, the software copy is skipped, so the frame is only
+    /// visible if the renderer accepts it: the UI clears `usable` on a refusal so
+    /// the session falls back to bytes instead of freezing, and re-arms it when
+    /// the option changes.
+    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+    pub(crate) fn set_gpu_frames_wanted(&mut self, on: bool) {
+        if self.gpu_frames_wanted != on {
+            self.gpu_frames_wanted = on;
+            log::info!("decoded surfaces wanted: {on}");
         }
     }
 
@@ -3998,11 +4033,14 @@ pub fn start_video_thread<F, T>(
     fps: Arc<RwLock<Option<usize>>>,
     chroma: Arc<RwLock<Option<Chroma>>>,
     discard_queue: Arc<RwLock<bool>>,
+    gpu_frames: Option<crate::ui_session_interface::SurfaceSwitches>,
     video_callback: F,
 ) where
-    F: 'static + FnMut(usize, &mut scrap::ImageRgb, *mut c_void, bool) + Send,
+    F: 'static + FnMut(usize, &mut scrap::ImageRgb, *mut c_void, bool, scrap::codec::SurfaceInfo) + Send,
     T: InvokeUiSession,
 {
+    #[cfg(not(all(target_os = "macos", feature = "hwcodec")))]
+    let _ = &gpu_frames;
     let mut video_callback = video_callback;
     let mut last_chroma = None;
     let is_view_camera = session.is_view_camera();
@@ -4055,14 +4093,40 @@ pub fn start_video_thread<F, T>(
                         if let Some(handler) = video_handler.as_mut() {
                             let mut pixelbuffer = true;
                             let mut tmp_chroma = None;
+                            #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+                            let mut gpu = GpuFrameOut::default();
+                            // Follow the UI switch frame by frame: one atomic
+                            // load, and the alternative is a session that keeps
+                            // asking for surfaces after the page stopped drawing
+                            // them.
+                            // Evaluated before the decode, so a refusal seen on
+                            // the previous frame is honoured by this one.
+                            #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+                            handler.set_gpu_frames_wanted(
+                                gpu_frames
+                                    .as_ref()
+                                    .map(|switches| switches.wants_surface())
+                                    .unwrap_or(false),
+                            );
                             let format_changed = handler.decoder.format() != format;
-                            match handler.handle_frame(vf, &mut pixelbuffer, &mut tmp_chroma) {
+                            match handler.handle_frame(
+                                vf,
+                                &mut pixelbuffer,
+                                &mut tmp_chroma,
+                                #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+                                &mut gpu,
+                            ) {
                                 Ok(true) => {
+                                    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+                                    let surface_info = gpu.surface_info();
+                                    #[cfg(not(all(target_os = "macos", feature = "hwcodec")))]
+                                    let surface_info = scrap::codec::SurfaceInfo::default();
                                     video_callback(
                                         display,
                                         &mut handler.rgb,
                                         handler.texture.texture,
                                         pixelbuffer,
+                                        surface_info,
                                     );
 
                                     // chroma
