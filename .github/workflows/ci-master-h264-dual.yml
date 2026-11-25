@@ -117,6 +117,11 @@ jobs:
       - name: Check the hwcodec configuration compiles
         run: cargo check -p scrap --features hwcodec
 
+      # presubmit.sh only WARN and maintainer B3: the crate must also build
+      # with its default features off.
+      - name: Check the default-feature-off configuration compiles
+        run: cargo check -p scrap --no-default-features
+
       - name: Build rustdesk
         run: |
           MIN_MACOS_VERSION="12.3"
@@ -238,6 +243,11 @@ jobs:
 
       - name: Check the hwcodec configuration compiles
         run: cargo check -p scrap --features hwcodec
+
+      # presubmit.sh only WARN and maintainer B3: the crate must also build
+      # with its default features off.
+      - name: Check the default-feature-off configuration compiles
+        run: cargo check -p scrap --no-default-features
 
       - name: Build rustdesk
         run: |
