@@ -118,7 +118,7 @@ jobs:
         run: cargo check -p scrap --features hwcodec
 
       # presubmit.sh only WARN and maintainer B3: the crate must also build
-      # with its default features off.
+      # without the hwcodec feature, which is what upstream CI strips.
       - name: Check the default-feature-off configuration compiles
         run: cargo check -p scrap --no-default-features
 
@@ -245,7 +245,7 @@ jobs:
         run: cargo check -p scrap --features hwcodec
 
       # presubmit.sh only WARN and maintainer B3: the crate must also build
-      # with its default features off.
+      # without the hwcodec feature, which is what upstream CI strips.
       - name: Check the default-feature-off configuration compiles
         run: cargo check -p scrap --no-default-features
 
