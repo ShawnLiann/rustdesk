@@ -17,7 +17,7 @@ use hwcodec::{
         Quality::{self, *},
         RateControl::{self, *},
     },
-    ffmpeg::AVPixelFormat,
+    ffmpeg::{AVHWDeviceType, AVPixelFormat},
     ffmpeg_ram::{
         decode::{DecodeContext, DecodeFrame, Decoder},
         encode::{EncodeContext, EncodeFrame, Encoder},
@@ -373,6 +373,53 @@ impl HwRamDecoder {
             Err(e) => Err(anyhow!(e)),
         }
     }
+}
+
+#[cfg(all(target_os = "macos", feature = "hwcodec"))]
+impl HwRamDecoder {
+    /// Decode one packet, asking VideoToolbox for the surface when `want_gpu`.
+    ///
+    /// The surface is borrowed from the decoder and dies on the next decode, so
+    /// it is retained here before the call returns. A call that produced no
+    /// usable surface has already consumed the packet, so it is decoded again
+    /// to keep the session on the software path instead of losing a frame.
+    pub fn decode_gpu<'a>(
+        &'a mut self,
+        data: &[u8],
+        want_gpu: bool,
+    ) -> ResultType<HwRamDecoded<'a>> {
+        if want_gpu && self.decoder.ctx.device_type == AVHWDeviceType::AV_HWDEVICE_TYPE_VIDEOTOOLBOX
+        {
+            if let Ok(surface) = self.decoder.decode_surface(data) {
+                if let Some(pixelbuffer) =
+                    unsafe { crate::PixelBufferFrame::retain_from_borrowed(surface) }
+                {
+                    return Ok(HwRamDecoded {
+                        images: Vec::new(),
+                        pixelbuffer: Some(pixelbuffer),
+                    });
+                }
+            }
+        }
+        let frames = self.decoder.decode(data).map_err(|e| anyhow!(e))?;
+        Ok(HwRamDecoded {
+            images: frames
+                .iter()
+                .map(|f| HwRamDecoderImage { frame: f })
+                .collect(),
+            pixelbuffer: None,
+        })
+    }
+}
+
+/// What one [`HwRamDecoder::decode_gpu`] call produced, macOS only.
+///
+/// Both halves come from the same call: `pixelbuffer` is owned and safe to hand
+/// to the renderer, `images` borrow the decoder and die with it.
+#[cfg(all(target_os = "macos", feature = "hwcodec"))]
+pub struct HwRamDecoded<'a> {
+    pub images: Vec<HwRamDecoderImage<'a>>,
+    pub pixelbuffer: crate::PixelBufferOutput,
 }
 
 pub struct HwRamDecoderImage<'a> {
