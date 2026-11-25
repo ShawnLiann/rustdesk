@@ -1,7 +1,7 @@
 use crate::{
     client::*,
     flutter_ffi::{EventToUI, SessionID},
-    ui_session_interface::{io_loop, InvokeUiSession, Session},
+    ui_session_interface::{io_loop, InvokeUiSession, Session, SurfaceSwitches},
 };
 use flutter_rust_bridge::StreamSink;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -298,6 +298,14 @@ pub type FlutterGpuTextureRendererPluginCApiGetAdapterLuid = unsafe extern "C" f
 
 pub(super) type TextureRgbaPtr = usize;
 
+/// macOS zero-copy entry point of the same texture renderer plugin.
+///
+/// `(texture_rgba_ptr, pixel_buffer, width, height, pixfmt) -> accepted`, where
+/// `accepted == 0` means the plugin refused this frame.
+#[cfg(all(target_os = "macos", feature = "hwcodec"))]
+pub type FlutterRgbaRendererPluginOnPixelBuffer =
+    unsafe extern "C" fn(TextureRgbaPtr, *mut c_void, i32, i32, u32) -> i32;
+
 struct DisplaySessionInfo {
     // TextureRgba pointer in flutter native.
     texture_rgba_ptr: TextureRgbaPtr,
@@ -305,6 +313,40 @@ struct DisplaySessionInfo {
     #[cfg(feature = "vram")]
     gpu_output_ptr: usize,
     notify_render_type: Option<RenderType>,
+}
+
+/// Whether the loaded plugin can take a decoded surface at all.
+///
+/// A property of the plugin, not of the session: the version pinned in
+/// `flutter/pubspec.yaml` has no surface entry point, and asking for surfaces
+/// then would skip the software copy for frames nobody can draw. Resolved once
+/// and reported once, so an old plugin cannot freeze the picture.
+#[cfg(all(target_os = "macos", feature = "hwcodec"))]
+fn surfaces_available() -> bool {
+    static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *AVAILABLE.get_or_init(|| match &*TEXTURE_RGBA_RENDERER_PLUGIN {
+        Ok(lib) => {
+            let found = unsafe {
+                lib.symbol::<FlutterRgbaRendererPluginOnPixelBuffer>(
+                    "FlutterRgbaRendererPluginOnPixelBuffer",
+                )
+            };
+            match found {
+                Ok(_) => true,
+                Err(e) => {
+                    log::warn!(
+                        "texture rgba renderer has no surface entry point ({e}); \
+                         decoded surfaces stay off"
+                    );
+                    false
+                }
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to load texture rgba renderer plugin, {e}");
+            false
+        }
+    })
 }
 
 // Video Texture Renderer in Flutter
@@ -316,6 +358,23 @@ struct VideoRenderer {
     on_rgba_func: Option<Symbol<'static, FlutterRgbaRendererPluginOnRgba>>,
     #[cfg(feature = "vram")]
     on_texture_func: Option<Symbol<'static, FlutterGpuTextureRendererPluginCApiSetTexture>>,
+    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+    on_pixelbuffer_func: Option<Symbol<'static, FlutterRgbaRendererPluginOnPixelBuffer>>,
+    /// False once a surface could not be presented, so the session stops asking
+    /// for them. Shared with the session through `Clone`, hence the `Arc`.
+    #[cfg_attr(
+        not(all(target_os = "macos", feature = "hwcodec")),
+        allow(dead_code)
+    )]
+    surfaces_usable: Arc<AtomicBool>,
+    /// Whether some display has a texture registered right now. Derived from
+    /// `map_display_sessions` in `register_pixelbuffer_texture`, never a second
+    /// copy of the state, and refreshed only when a registration changes.
+    #[cfg_attr(
+        not(all(target_os = "macos", feature = "hwcodec")),
+        allow(dead_code)
+    )]
+    has_texture: Arc<AtomicBool>,
 }
 
 impl Default for VideoRenderer {
@@ -361,6 +420,30 @@ impl Default for VideoRenderer {
             }
         };
 
+        #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+        let on_pixelbuffer_func = match &*TEXTURE_RGBA_RENDERER_PLUGIN {
+            Ok(lib) => {
+                let find_sym_res = unsafe {
+                    lib.symbol::<FlutterRgbaRendererPluginOnPixelBuffer>(
+                        "FlutterRgbaRendererPluginOnPixelBuffer",
+                    )
+                };
+                match find_sym_res {
+                    Ok(sym) => Some(sym),
+                    Err(e) => {
+                        log::info!(
+                            "texture rgba renderer has no surface entry point, {e}"
+                        );
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to load texture rgba renderer plugin, {e}");
+                None
+            }
+        };
+
         Self {
             map_display_sessions: Default::default(),
             is_support_multi_ui_session: false,
@@ -368,6 +451,10 @@ impl Default for VideoRenderer {
             on_rgba_func,
             #[cfg(feature = "vram")]
             on_texture_func,
+            #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+            on_pixelbuffer_func,
+            surfaces_usable: Arc::new(AtomicBool::new(true)),
+            has_texture: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -391,6 +478,15 @@ impl VideoRenderer {
                 },
             );
         }
+    }
+
+    /// Record that a frame could not be presented.
+    ///
+    /// The decoder already skipped the software copy for that frame, so the only
+    /// recovery is to stop asking: the next frame takes the byte path.
+    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+    fn note_refused(&self) {
+        self.surfaces_usable.store(false, Ordering::Relaxed);
     }
 
     fn register_pixelbuffer_texture(&self, display: usize, ptr: usize) {
@@ -434,6 +530,16 @@ impl VideoRenderer {
                 }
             }
         }
+
+        // Property C2: a session may only ask for surfaces once some display has a
+        // texture to draw them on. This is the only place that state changes, and
+        // the write lock is already held.
+        self.has_texture.store(
+            sessions_lock
+                .values()
+                .any(|info| info.texture_rgba_ptr != usize::default()),
+            Ordering::Relaxed,
+        );
     }
 
     #[cfg(feature = "vram")]
@@ -516,6 +622,92 @@ impl VideoRenderer {
                     rgba.align() as _,
                 )
             };
+        }
+        if info.notify_render_type != Some(RenderType::PixelBuffer) {
+            info.notify_render_type = Some(RenderType::PixelBuffer);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// macOS: hand the decoded surface to the texture this display already uses.
+    ///
+    /// Same `texture_rgba_ptr`, same plugin, same widget as the RGBA path --
+    /// only the entry point differs, so nothing new is registered and the
+    /// Windows `vram` rail is untouched.
+    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+    pub fn on_pixelbuffer(
+        &self,
+        display: usize,
+        pixel_buffer: *mut c_void,
+        width: usize,
+        height: usize,
+        pixfmt: u32,
+    ) -> bool {
+        const LOG_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+        let mut write_lock = self.map_display_sessions.write().unwrap();
+        let opt_info = if !self.is_support_multi_ui_session {
+            write_lock.values_mut().next()
+        } else {
+            write_lock.get_mut(&display)
+        };
+        let Some(info) = opt_info else {
+            // No entry for this display. The RGBA path drops the same frame in
+            // this state, so there is nothing to fall back to; do not latch, as
+            // the entry is also missing transiently while a display switches
+            // texture and a session-wide latch would outlive that.
+            hbb_common::throttled_log!(
+                LOG_INTERVAL,
+                warn,
+                "no display session for display {display}; surface dropped"
+            );
+            return false;
+        };
+        if info.texture_rgba_ptr == usize::default() {
+            // Same class as the missing entry above: a display that the peer
+            // reports but the UI has not registered a texture for yet. Nothing to
+            // draw on, and nothing to fall back to either, so do not latch.
+            hbb_common::throttled_log!(LOG_INTERVAL, warn, "no texture for this surface; dropped");
+            return false;
+        }
+        if info.size != (0, 0) && (info.size.0 != width || info.size.1 != height) {
+            // A display reports (0, 0) until the peer size arrives; that is not a mismatch.
+            // Unlike the RGBA path this must not refuse: the decoder already
+            // skipped the software copy, so refusing would only leave the last
+            // picture on screen. The plugin sizes its texture from the
+            // dimensions it is handed, so the frame's own size wins.
+            hbb_common::throttled_log!(
+                LOG_INTERVAL,
+                warn,
+                "surface size ({width},{height}) differs from peer size ({},{})",
+                info.size.0,
+                info.size.1
+            );
+        }
+        let Some(func) = &self.on_pixelbuffer_func else {
+            log::warn!("no surface entry point; decoded surfaces off");
+            self.note_refused();
+            return false;
+        };
+        let accepted = unsafe {
+            func(
+                info.texture_rgba_ptr as _,
+                pixel_buffer,
+                width as _,
+                height as _,
+                pixfmt,
+            )
+        };
+        if accepted == 0 {
+            // Nothing left to fall back to for this frame: the software copy was
+            // skipped, and this refusal latches on purpose because bytes resume
+            // on the next frame. Drop the render-type memory so the next accepted
+            // frame notifies the UI again.
+            hbb_common::throttled_log!(LOG_INTERVAL, warn, "renderer refused the decoded surface");
+            info.notify_render_type = None;
+            self.note_refused();
+            return false;
         }
         if info.notify_render_type != Some(RenderType::PixelBuffer) {
             info.notify_render_type = Some(RenderType::PixelBuffer);
@@ -666,6 +858,9 @@ impl FlutterHandler {
     pub fn update_use_texture_render(&self) {
         self.use_texture_render
             .store(crate::ui_interface::use_texture_render(), Ordering::Relaxed);
+        for handler in self.session_handlers.read().unwrap().values() {
+            handler.renderer.surfaces_usable.store(true, Ordering::Relaxed);
+        }
         self.display_rgbas.write().unwrap().clear();
     }
 }
@@ -880,6 +1075,55 @@ impl InvokeUiSession for FlutterHandler {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     fn on_rgba(&self, display: usize, rgba: &mut scrap::ImageRgb) {
         self.on_rgba_soft_render(display, rgba);
+    }
+
+    fn surface_switches(&self) -> Option<SurfaceSwitches> {
+        #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+        {
+            if surfaces_available() {
+                let renderer = self
+                    .session_handlers
+                    .read()
+                    .unwrap()
+                    .values()
+                    .next()
+                    .map(|handler| handler.renderer.clone());
+                if let Some(renderer) = renderer {
+                    return Some(SurfaceSwitches {
+                        draw_through_texture: self.use_texture_render.clone(),
+                        usable: renderer.surfaces_usable.clone(),
+                        consumer_ready: renderer.has_texture.clone(),
+                    });
+                }
+                log::info!("no ui session yet; decoded surfaces off for this session");
+            }
+        }
+        None
+    }
+
+    #[inline]
+    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+    fn on_pixelbuffer(
+        &self,
+        display: usize,
+        pixel_buffer: *mut c_void,
+        width: usize,
+        height: usize,
+        pixfmt: u32,
+    ) {
+        if !self.use_texture_render.load(Ordering::Relaxed) {
+            return;
+        }
+        for (_, session) in self.session_handlers.read().unwrap().iter() {
+            if session
+                .renderer
+                .on_pixelbuffer(display, pixel_buffer, width, height, pixfmt)
+            {
+                if let Some(stream) = &session.event_stream {
+                    stream.add(EventToUI::Texture(display, false));
+                }
+            }
+        }
     }
 
     #[inline]
