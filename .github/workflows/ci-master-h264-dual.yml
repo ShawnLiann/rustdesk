@@ -1,0 +1,264 @@
+name: CI macOS (master head, h264 VideoToolbox synth)
+
+# Build-time evidence for a build that stays on upstream master and only changes
+# what the question needs:
+#   * the texture plugin is pinned to master + plugin#2 (fix-texture-lifetime)
+#     + our macOS-only commits (fork branch -> pubspec `ref`),
+#   * hwcodec is pinned to a fork rev that carries the Apple-only surface decode
+#     entry point (Cargo.toml `[patch]`); the fork-only consumption pin adds
+#     the VideoToolbox h264 encoder unlock that upstream turned off in ec38eba.
+# Neither pin is proposed as a PR. Scratch branch only.
+#
+# Two jobs on purpose: x86_64 for the Intel iMac (macOS 12) and arm64 for the
+# M2 mini. Each artefact is the same app in both roles (client and host).
+
+on:
+  workflow_dispatch:
+
+env:
+  MAC_RUST_VERSION: "1.81"
+  FLUTTER_VERSION: "3.24.5"
+  FLUTTER_MACOS_ARM_VERSION: "3.44.9"
+  VCPKG_COMMIT_ID: "9e593bb18ea69cc5095e012465dcd675a822ed0d"
+  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+
+jobs:
+  generate-bridge:
+    uses: ./.github/workflows/bridge.yml
+
+  build-macos-intel:
+    name: macOS x86_64 (master head, h264 VT)
+    needs: [generate-bridge]
+    runs-on: macos-15-intel
+    permissions:
+      contents: read
+    steps:
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          # vcpkg and cargo build scripts run in this job; do not leave the token in .git/config.
+          persist-credentials: false
+
+      - name: Install build runtime
+        run: |
+          brew install llvm
+          if ! command -v pkg-config &>/dev/null; then brew install pkg-config; fi
+
+      - name: Install NASM
+        run: |
+          wget https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/macosx/nasm-2.16.03-macosx.zip
+          unzip -q nasm-2.16.03-macosx.zip
+          sudo cp nasm-2.16.03/nasm /usr/local/bin/nasm
+          nasm --version
+
+      - name: Install flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      - name: Patch flutter
+        run: |
+          cd $(dirname $(dirname $(which flutter)))
+          git apply ${{ github.workspace }}/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff
+
+      - name: Workaround for flutter issue
+        shell: bash
+        run: |
+          cd "$(dirname "$(which flutter)")"
+          sed -i -e 's/_setFramesEnabledState(false);/\/\/_setFramesEnabledState(false);/g' ../packages/flutter/lib/src/scheduler/binding.dart
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ env.MAC_RUST_VERSION }}
+          targets: x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: macos-intel-master-h264
+
+      - name: Restore bridge files
+        uses: actions/download-artifact@v4
+        with:
+          name: bridge-artifact
+          path: ./
+
+      - name: Setup vcpkg with GitHub Actions binary cache
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+          doNotCache: false
+
+      - name: Install vcpkg dependencies
+        run: |
+          if ! $VCPKG_ROOT/vcpkg install --x-install-root="$VCPKG_ROOT/installed"; then
+            find "${VCPKG_ROOT}/" -name "*.log" | while read -r f; do echo "$f:"; tail -n 50 "$f"; done
+            exit 1
+          fi
+
+      - name: Check Cargo.lock carries the pinned hwcodec rev
+        run: |
+          pin=$(sed -n 's/^hwcodec = .*rev = "\([0-9a-f]*\)".*/\1/p' Cargo.toml)
+          lock=$(sed -n 's/^source = ".*hwcodec?rev=\([0-9a-f]*\)#.*/\1/p' Cargo.lock)
+          echo "Cargo.toml pin: $pin"
+          echo "Cargo.lock rev: $lock"
+          test -n "$pin" && test "$pin" = "$lock"
+
+      # The point of this branch: compile the configuration that upstream CI
+      # strips, and fail early rather than after a full app build.
+      - name: Check the hwcodec configuration compiles
+        run: cargo check -p scrap --features hwcodec
+
+      - name: Build rustdesk
+        run: |
+          MIN_MACOS_VERSION="12.3"
+          sed -i -e "s/MACOSX_DEPLOYMENT_TARGET\=[0-9]*.[0-9]*/MACOSX_DEPLOYMENT_TARGET=${MIN_MACOS_VERSION}/" build.py
+          sed -i -e "s/platform :osx, '.*'/platform :osx, '${MIN_MACOS_VERSION}'/" flutter/macos/Podfile
+          sed -i -e "s/osx_minimum_system_version = \"[0-9]*.[0-9]*\"/osx_minimum_system_version = \"${MIN_MACOS_VERSION}\"/" Cargo.toml
+          sed -i -e "s/MACOSX_DEPLOYMENT_TARGET = [0-9]*.[0-9]*;/MACOSX_DEPLOYMENT_TARGET = ${MIN_MACOS_VERSION};/" flutter/macos/Runner.xcodeproj/project.pbxproj
+          ./build.py --flutter --hwcodec --unix-file-copy-paste --screencapturekit
+
+      - name: Package the app
+        run: |
+          set -e
+          APP="flutter/build/macos/Build/Products/Release/RustDesk.app"
+          test -d "$APP"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" /tmp/RustDesk-master-h264-intel.zip
+          ls -la /tmp/RustDesk-master-h264-intel.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rustdesk-master-h264-intel
+          path: /tmp/RustDesk-master-h264-intel.zip
+          retention-days: 7
+
+  build-macos-arm64:
+    name: macOS arm64 (master head, h264 VT)
+    needs: [generate-bridge]
+    # Same intent as the Intel job: compile the hwcodec path and produce a
+    # runnable app. This job exists so an arm64 (M2 mini) host build is available
+    # for the S4 arm matrix without waiting on a build when the machine is free.
+    runs-on: macos-15  # macos-26 arm64 never acquired a runner (3 cancels, 15m each); see OWNER-QUEUE §15
+    permissions:
+      contents: read
+    steps:
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Install build runtime
+        run: |
+          brew install llvm
+          if ! command -v pkg-config &>/dev/null; then brew install pkg-config; fi
+
+      - name: Install NASM
+        run: |
+          wget https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/macosx/nasm-2.16.03-macosx.zip
+          unzip -q nasm-2.16.03-macosx.zip
+          sudo cp nasm-2.16.03/nasm /usr/local/bin/nasm
+          nasm --version
+
+      - name: Install flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          flutter-version: ${{ env.FLUTTER_MACOS_ARM_VERSION }}
+
+      - name: Keep CocoaPods for Flutter 3.44 (arm64)
+        run: flutter config --no-enable-swift-package-manager
+
+      - name: Workaround for flutter issue
+        shell: bash
+        run: |
+          cd "$(dirname "$(which flutter)")"
+          sed -i -e 's/_setFramesEnabledState(false);/\/\/_setFramesEnabledState(false);/g' ../packages/flutter/lib/src/scheduler/binding.dart
+          grep -n '_setFramesEnabledState(false);' ../packages/flutter/lib/src/scheduler/binding.dart
+
+      - name: Patch RustDesk sources for Flutter 3.44 (arm64)
+        shell: bash
+        run: |
+          brew install gnu-sed
+          export PATH="$(brew --prefix gnu-sed)/libexec/gnubin:$PATH"
+          bash .github/patches/apply_flutter_3.44_source_patches.sh
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ env.MAC_RUST_VERSION }}
+          targets: aarch64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: macos-arm64-master-h264
+
+      - name: Restore bridge files
+        uses: actions/download-artifact@v4
+        with:
+          # *.freezed.dart must match the freezed Flutter 3.44 resolves.
+          name: bridge-artifact-flutter-3.44
+          path: ./
+
+      - name: Setup vcpkg with GitHub Actions binary cache
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
+          doNotCache: false
+
+      - name: Install vcpkg dependencies
+        run: |
+          if ! $VCPKG_ROOT/vcpkg install --x-install-root="$VCPKG_ROOT/installed"; then
+            find "${VCPKG_ROOT}/" -name "*.log" | while read -r f; do echo "$f:"; tail -n 50 "$f"; done
+            exit 1
+          fi
+
+      - name: Check Cargo.lock carries the pinned hwcodec rev
+        run: |
+          pin=$(sed -n 's/^hwcodec = .*rev = "\([0-9a-f]*\)".*/\1/p' Cargo.toml)
+          lock=$(sed -n 's/^source = ".*hwcodec?rev=\([0-9a-f]*\)#.*/\1/p' Cargo.lock)
+          echo "Cargo.toml pin: $pin"
+          echo "Cargo.lock rev: $lock"
+          test -n "$pin" && test "$pin" = "$lock"
+
+      - name: Check the hwcodec configuration compiles
+        run: cargo check -p scrap --features hwcodec
+
+      - name: Build rustdesk
+        run: |
+          MIN_MACOS_VERSION="12.3"
+          sed -i -e "s/MACOSX_DEPLOYMENT_TARGET\=[0-9]*.[0-9]*/MACOSX_DEPLOYMENT_TARGET=${MIN_MACOS_VERSION}/" build.py
+          sed -i -e "s/platform :osx, '.*'/platform :osx, '${MIN_MACOS_VERSION}'/" flutter/macos/Podfile
+          sed -i -e "s/osx_minimum_system_version = \"[0-9]*.[0-9]*\"/osx_minimum_system_version = \"${MIN_MACOS_VERSION}\"/" Cargo.toml
+          sed -i -e "s/MACOSX_DEPLOYMENT_TARGET = [0-9]*.[0-9]*;/MACOSX_DEPLOYMENT_TARGET = ${MIN_MACOS_VERSION};/" flutter/macos/Runner.xcodeproj/project.pbxproj
+          ./build.py --flutter --hwcodec --unix-file-copy-paste --screencapturekit
+
+      - name: Package the app
+        run: |
+          set -e
+          APP="flutter/build/macos/Build/Products/Release/RustDesk.app"
+          test -d "$APP"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" /tmp/RustDesk-master-h264-arm64.zip
+          ls -la /tmp/RustDesk-master-h264-arm64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rustdesk-master-h264-arm64
+          path: /tmp/RustDesk-master-h264-arm64.zip
+          retention-days: 7
