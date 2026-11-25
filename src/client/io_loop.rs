@@ -2900,6 +2900,7 @@ impl<T: InvokeUiSession> Remote<T> {
             fps_control: Default::default(),
             discard_queue: discard_queue.clone(),
         };
+        let gpu_frames = self.handler.ui_handler.surface_switches();
         let handler = self.handler.ui_handler.clone();
         crate::client::start_video_thread(
             self.handler.clone(),
@@ -2909,16 +2910,28 @@ impl<T: InvokeUiSession> Remote<T> {
             decode_fps,
             self.chroma.clone(),
             discard_queue,
+            gpu_frames,
             move |display: usize,
                   data: &mut scrap::ImageRgb,
                   _texture: *mut c_void,
-                  pixelbuffer: bool| {
+                  pixelbuffer: bool,
+                  surface_info: scrap::codec::SurfaceInfo| {
                 *frame_count.write().unwrap() += 1;
+                #[cfg(not(all(target_os = "macos", feature = "hwcodec")))]
+                let _ = &surface_info;
                 if pixelbuffer {
                     handler.on_rgba(display, data);
                 } else {
                     #[cfg(all(feature = "vram", feature = "flutter"))]
                     handler.on_texture(display, _texture);
+                    #[cfg(all(target_os = "macos", feature = "hwcodec"))]
+                    handler.on_pixelbuffer(
+                        display,
+                        _texture,
+                        surface_info.width,
+                        surface_info.height,
+                        surface_info.pixfmt,
+                    );
                 }
             },
         );
